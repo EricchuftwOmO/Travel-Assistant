@@ -1,0 +1,35 @@
+# Travel Assistant: starts every service together.
+#   docker compose up --build      start (rebuilds changed images)
+#   docker compose down            stop
+#   docker compose logs -f gateway follow one service's logs
+#
+# Only the gateway publishes a port (http://localhost:8080). The other services
+# are reachable only inside the Compose network, by service name.
+#
+# Adding a service: give it a folder in backend/ with its own Dockerfile and a
+# GET /health endpoint, add a block below (no "ports:"), and point the gateway's
+# matching *_SERVICE_URL at it, e.g.
+#
+#   trip-service:
+#     build: ./backend/trip-service
+#     environment:
+#       PORT: 3001
+#       DATABASE_URL: postgres://...
+#     healthcheck:
+#       test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+#       interval: 10s
+#       timeout: 3s
+#       retries: 3
+
+services:
+  gateway:
+    build: ./backend/gateway
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      TRIP_SERVICE_URL: http://trip-service:3001
+      SEARCH_SERVICE_URL: http://search-service:3002
+      BUDGET_SERVICE_URL: http://budget-service:3003
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+    restart: unless-stopped
