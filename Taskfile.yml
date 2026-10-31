@@ -1,0 +1,32 @@
+# Travel Assistant tasks. Run `task` to list them.
+# https://taskfile.dev
+version: '3'
+
+tasks:
+  default:
+    desc: List available tasks
+    silent: true
+    cmds:
+      - task --list
+
+  up:
+    desc: Build and start all services (gateway at http://localhost:8080)
+    cmds:
+      - docker compose up --build -d
+      - docker compose ps
+
+  down:
+    desc: Stop all services
+    cmds:
+      - docker compose down
+
+  logs:
+    desc: "Follow logs (all services, or one: task logs -- gateway)"
+    cmds:
+      - docker compose logs -f {{.CLI_ARGS}}
+
+  test:
+    desc: Run the gateway tests
+    dir: backend/gateway
+    cmds:
+      - npm test
