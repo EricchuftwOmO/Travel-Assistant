@@ -1,88 +1,49 @@
 // TCSS 559 Autumn 2026
 // Travel Assistant - API Gateway
-// Forwards a request to the owning service unchanged and streams the response back.
+// Forwards a request to the owning service unchanged, using http-proxy-middleware.
 // A service that is down gives 502 UPSTREAM_UNAVAILABLE; one that doesn't answer
 // in time gives 504 UPSTREAM_TIMEOUT.
 
 const http = require('node:http');
 const https = require('node:https');
-const { GatewayError } = require('./errors');
+const { createProxyMiddleware } = require('http-proxy-middleware');
+const { sendError } = require('./errors');
 
-// Hop-by-hop headers apply to a single connection and must not be forwarded
-const HOP_BY_HOP = new Set([
-    'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
-    'te', 'trailer', 'transfer-encoding', 'upgrade',
-]);
+// Create the proxy for one route (called once at startup, not per request)
+function createProxy(route) {
+    // Reuse connections to the service. Without an agent the library
+    // sends "Connection: close" and opens a new connection every request.
+    const isHttps = new URL(route.url).protocol === 'https:';
+    const agent = isHttps ? new https.Agent({ keepAlive: true }) : new http.Agent({ keepAlive: true });
 
-function copyHeaders(headers) {
-    const copy = {};
-    for (const [name, value] of Object.entries(headers)) {
-        if (!HOP_BY_HOP.has(name.toLowerCase())) copy[name] = value;
-    }
-    return copy;
+    return createProxyMiddleware({
+        target: route.url,
+        agent,
+        changeOrigin: true,          // Host header = the service, not the gateway
+        xfwd: true,                  // add X-Forwarded-For / -Host / -Proto / -Port
+        proxyTimeout: route.timeoutMs,
+
+        on: {
+            proxyReq(proxyReq, req) {
+                proxyReq.setHeader('X-Request-Id', req.id);
+                // The library reports a timeout as a generic ECONNRESET,
+                // so remember that the timeout happened
+                proxyReq.on('timeout', () => { req.upstreamTimedOut = true; });
+            },
+
+            error(err, req, res) {
+                // A half-sent response can't be turned into an error; close it
+                if (res.headersSent) return res.destroy();
+
+                if (req.upstreamTimedOut) {
+                    return sendError(res, 504, 'UPSTREAM_TIMEOUT',
+                        `${route.service} service did not respond within ${route.timeoutMs} ms`);
+                }
+                console.error(`[${req.id}] ${route.service} service error: ${err.code || err.message}`);
+                sendError(res, 502, 'UPSTREAM_UNAVAILABLE', `${route.service} service is unavailable`);
+            },
+        },
+    });
 }
 
-// Headers sent to the service: the client's headers plus tracing and forwarding info
-function upstreamHeaders(req) {
-    const headers = copyHeaders(req.headers);
-    delete headers.host;   // set from the target URL
-    headers['x-request-id'] = req.id;
-    headers['x-forwarded-for'] = req.headers['x-forwarded-for']
-        ? `${req.headers['x-forwarded-for']}, ${req.socket.remoteAddress}`
-        : req.socket.remoteAddress;
-    headers['x-forwarded-host'] = req.headers.host;
-    headers['x-forwarded-proto'] = req.protocol;
-    return headers;
-}
-
-function forward(req, res, next, route) {
-    // The path and query string are forwarded unchanged
-    const target = new URL(req.originalUrl, route.url);
-    const client = target.protocol === 'https:' ? https : http;
-    let finished = false;
-
-    // Report a failure once: as a JSON error if nothing was sent yet, otherwise
-    // by closing the connection (a half-sent response can't be fixed)
-    function fail(error) {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timer);
-        if (res.headersSent) res.destroy();
-        else next(error);
-    }
-
-    const upstreamReq = client.request(target, {
-        method: req.method,
-        headers: upstreamHeaders(req),
-    }, (upstreamRes) => {
-        clearTimeout(timer);
-        res.writeHead(upstreamRes.statusCode, copyHeaders(upstreamRes.headers));
-        upstreamRes.pipe(res);
-        upstreamRes.on('end', () => { finished = true; });
-        upstreamRes.on('error', () => fail());
-    });
-
-    // Timeout covers the time until the service starts its response
-    const timer = setTimeout(() => {
-        fail(new GatewayError(504, 'UPSTREAM_TIMEOUT',
-            `${route.service} service did not respond within ${route.timeoutMs} ms`));
-        upstreamReq.destroy();
-    }, route.timeoutMs);
-
-    upstreamReq.on('error', (err) => {
-        if (finished) return;   // already handled (e.g. we aborted it after a timeout)
-        console.error(`[${req.id}] ${route.service} service error: ${err.code || err.message}`);
-        fail(new GatewayError(502, 'UPSTREAM_UNAVAILABLE', `${route.service} service is unavailable`));
-    });
-
-    // If the client goes away, stop waiting for the service
-    res.on('close', () => {
-        clearTimeout(timer);
-        if (!res.writableFinished) upstreamReq.destroy();
-    });
-
-    // Stream the request body (if any) to the service without parsing it
-    req.pipe(upstreamReq);
-}
-
-module.exports = { forward };
+module.exports = { createProxy };

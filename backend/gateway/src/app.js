@@ -5,7 +5,7 @@
 const express = require('express');
 const { requestId, cors, requestLogger } = require('./middleware');
 const { buildRouteTable, matchRoute } = require('./routes');
-const { forward } = require('./proxy');
+const { createProxy } = require('./proxy');
 const { healthHandler } = require('./health');
 const { notFound, errorHandler } = require('./errors');
 
@@ -26,11 +26,14 @@ function createApp(config) {
     app.get('/api/health', healthHandler(config));
 
     // Forward /api/* to the owning service. No body parser: bodies are streamed as-is.
-    app.use('/api', (req, res, next) => {
-        const route = matchRoute(routeTable, req.originalUrl.split('?')[0]);
+    // Not mounted with app.use('/api', ...), because that would strip "/api" from
+    // the path and the services expect the full path.
+    const proxies = new Map(routeTable.map((route) => [route, createProxy(route)]));
+    app.use((req, res, next) => {
+        const route = matchRoute(routeTable, req.path);
         if (!route) return next();
         res.locals.service = route.service;
-        forward(req, res, next, route);
+        proxies.get(route)(req, res, next);
     });
 
     // Unknown endpoints return 404, and all errors return JSON (these must come last)
