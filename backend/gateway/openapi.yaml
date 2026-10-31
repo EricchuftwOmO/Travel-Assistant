@@ -1,0 +1,173 @@
+openapi: 3.1.0
+info:
+  title: Travel Assistant API
+  version: 0.1.0
+  description: >-
+    Single entry point for the Travel Assistant frontend. The API gateway
+    forwards every /api/* request to the service that owns it (Trip, Activity
+    Search, Budget) and adds CORS, X-Request-Id tracing, timeouts and uniform
+    errors. Only the endpoints implemented so far are listed here.
+servers:
+  - url: http://localhost:8080
+    description: API gateway (Docker Compose and default local port)
+paths:
+  /health:
+    get:
+      summary: Gateway liveness check
+      operationId: getGatewayHealth
+      responses:
+        '200':
+          description: The gateway is running
+  /api/health:
+    get:
+      summary: Combined health of every configured service
+      operationId: getServicesHealth
+      responses:
+        '200':
+          description: Every configured service is up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthReport'
+              example:
+                status: ok
+                services:
+                  trip: { status: up, httpStatus: 200, latencyMs: 4 }
+                  budget: { status: up, httpStatus: 200, latencyMs: 3 }
+        '503':
+          description: At least one service is down
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthReport'
+              example:
+                status: degraded
+                services:
+                  trip: { status: up, httpStatus: 200, latencyMs: 4 }
+                  search: { status: down, reason: unreachable, latencyMs: 1 }
+  /api/trips:
+    get:
+      summary: List one user's trips, ordered by start date
+      operationId: listTrips
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          description: ID of the user whose trips to return
+          schema:
+            type: string
+          example: u1
+      responses:
+        '200':
+          description: The user's trips (empty array if none)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Trip'
+              example:
+                - id: 1
+                  user_id: u1
+                  title: Tokyo Trip
+                  start_date: '2026-12-01'
+                  end_date: '2026-12-05'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/UpstreamUnavailable'
+        '504':
+          $ref: '#/components/responses/UpstreamTimeout'
+components:
+  schemas:
+    Trip:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: string
+        title:
+          type: string
+        start_date:
+          type: [string, 'null']
+          format: date
+        end_date:
+          type: [string, 'null']
+          format: date
+      required: [id, user_id, title]
+    HealthReport:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        services:
+          type: object
+          description: State of each configured service, keyed by service name
+          additionalProperties:
+            $ref: '#/components/schemas/ServiceHealth'
+      required: [status, services]
+    ServiceHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [up, down]
+        httpStatus:
+          type: integer
+          description: Status returned by the service's health endpoint
+        reason:
+          type: string
+          enum: [timeout, unreachable]
+          description: Why the service is down, when it did not answer
+        latencyMs:
+          type: integer
+      required: [status, latencyMs]
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Machine-readable code, e.g. NOT_FOUND
+            message:
+              type: string
+            details: {}
+          required: [code, message]
+      required: [error]
+  responses:
+    BadRequest:
+      description: The request is missing or has an invalid parameter
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: The requested resource does not exist, or no service owns the path (NOT_FOUND)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: Unexpected error (INTERNAL_ERROR)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UpstreamUnavailable:
+      description: The owning service is down or refused the connection (UPSTREAM_UNAVAILABLE)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UpstreamTimeout:
+      description: The owning service did not answer in time (UPSTREAM_TIMEOUT)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
