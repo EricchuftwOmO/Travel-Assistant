@@ -107,6 +107,16 @@ test('adds a request ID and forwards it to the service', async () => {
     assert.equal(body.headers['x-request-id'], id);
 });
 
+test('sends the service its own Host and the client details in X-Forwarded-*', async () => {
+    const res = await fetch(`${gateway}/api/trips`);
+    const body = await res.json();
+    const gatewayHost = new URL(gateway).host;
+    assert.notEqual(body.headers.host, gatewayHost);
+    assert.equal(body.headers['x-forwarded-host'], gatewayHost);
+    assert.ok(body.headers['x-forwarded-for']);
+    assert.equal(body.headers['x-forwarded-proto'], 'http');
+});
+
 test('keeps a valid client request ID and replaces an invalid one', async () => {
     let res = await fetch(`${gateway}/api/trips`, { headers: { 'X-Request-Id': 'abc-123' } });
     assert.equal(res.headers.get('x-request-id'), 'abc-123');
