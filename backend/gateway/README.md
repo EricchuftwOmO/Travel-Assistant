@@ -17,8 +17,9 @@ The first matching rule wins:
 | `/api/budget/*` | Budget | `http://localhost:3003` | 5 s |
 | `/api/planner/*` | AI Planner (stretch) | not set, so not routed | 60 s |
 
-Paths, query strings, methods, headers and bodies are forwarded unchanged. Bodies are
-streamed, not parsed. Each service therefore defines its routes with the full `/api/...` path.
+Forwarding uses [`http-proxy-middleware`](https://github.com/chimurai/http-proxy-middleware)
+with keep-alive connections to each service. Paths, query strings, methods, headers and
+bodies are forwarded unchanged. Bodies are streamed, not parsed. Each service therefore defines its routes with the full `/api/...` path.
 
 ## What the gateway adds
 
@@ -33,7 +34,7 @@ streamed, not parsed. Each service therefore defines its routes with the full `/
 |---|---|---|
 | 404 | `NOT_FOUND` | No service owns the path |
 | 502 | `UPSTREAM_UNAVAILABLE` | The service is down or refused the connection |
-| 504 | `UPSTREAM_TIMEOUT` | The service didn't start its response within the timeout |
+| 504 | `UPSTREAM_TIMEOUT` | The service sent nothing for the whole timeout (5 s, or 60 s for the planner) |
 | 500 | `INTERNAL_ERROR` | Unexpected gateway error (no stack trace returned) |
 
   Errors returned by a service (400, 404, 422, …) are passed through unchanged.
@@ -89,7 +90,7 @@ See [`.env.example`](.env.example) for every variable and its default.
 server.js           entry point: loads config, starts the server
 src/config.js       environment variables and defaults
 src/routes.js       route table (which service owns which path)
-src/proxy.js        forwards a request and streams the response back; 502/504
+src/proxy.js        one http-proxy-middleware proxy per route; 502/504 errors
 src/middleware.js   request IDs, CORS, request logging
 src/health.js       combined health check
 src/errors.js       uniform JSON errors
