@@ -73,8 +73,6 @@ npx newman run tests/postman/Travel-Assistant.postman_collection.json -e tests/p
 (cd backend/llm-service && npm install && npm test)    # 13 tests
 ```
 
-A recorded run is in [`tests/results/newman-run.txt`](tests/results/newman-run.txt).
-
 ## Data
 
 Each service creates its own database and sample rows on first start (six databases, one PostgreSQL server).
@@ -86,7 +84,7 @@ SQL exports are in [`data/`](data/README.md).
 backend/        gateway, trip-service, flight/hotel/car-rental/activity-service, llm-service
 docker-compose.yml
 data/           SQL exports of the six databases
-tests/          Postman collection and recorded run
+tests/          Postman collection and environment (import into Postman)
 deploy/         deployment guide and Docker evidence
 docs/ARCHITECTURE.md
 ```
