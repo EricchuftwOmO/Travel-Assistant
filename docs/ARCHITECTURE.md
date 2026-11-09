@@ -2,7 +2,7 @@
 
 Diagrams are [Mermaid](https://mermaid.js.org/), so they render on GitHub and in most Markdown
 viewers. Solid boxes exist today. **Dashed boxes are in the plan but not built yet**
-(Auth, Travel/Trip, Budget).
+(Budget).
 
 ## 1. Services
 
@@ -15,13 +15,12 @@ flowchart TB
 
     subgraph planned["Planned, not built yet"]
         direction LR
-        auth["AUTH"]:::planned
-        trip["TRAVEL SERVICE :3001<br/>users · trips · activity tracking"]:::planned
         budget["BUDGET SERVICE :3003"]:::planned
     end
 
-    gateway -.-> auth
-    gateway -.->|"/api/trips"| trip
+    trip["TRIP SERVICE :3001<br/>/api/auth · /api/users<br/>/api/trips (+ itineraries) · /api/places<br/>(JWT auth)"]
+
+    gateway -->|"/api/auth, /api/users, /api/trips, /api/places"| trip
     gateway -.->|"/api/budget"| budget
 
     subgraph search["Search services (PostgreSQL + Redis cache)"]
@@ -45,6 +44,7 @@ flowchart TB
         cdb[("car_rental_db")]
         adb[("activity_db")]
         ldb[("llm_db")]
+        tdb[("trip_db")]
     end
 
     redis[("REDIS<br/>GET cache, keys prefixed per service")]
@@ -54,6 +54,7 @@ flowchart TB
     car --> cdb
     activity --> adb
     llm --> ldb
+    trip --> tdb
 
     flight -.-> redis
     hotel -.-> redis
@@ -63,17 +64,36 @@ flowchart TB
     groq["GROQ API<br/>(language model)"]
     llm -->|"if GROQ_API_KEY is set"| groq
 
+    %% Planned: the LLM service is the AI component. It calls the search services directly
+    %% (not through the gateway) to gather options for a recommendation summary.
+    %% Planned: live flight and hotel results come from SerpApi (Google Flights / Google Hotels).
+    serpapi["SERPAPI<br/>(external, planned)"]:::planned
+    flight -.->|"planned: live results"| serpapi
+    hotel -.->|"planned: live results"| serpapi
+
+    llm -.->|"planned: gathers options"| flight
+    llm -.-> hotel
+    llm -.-> car
+    llm -.-> activity
+
     classDef planned stroke-dasharray: 5 5,fill:#f4f4f4,color:#666
 ```
 
 Dotted arrows to Redis mean the cache is optional: if Redis is down, the services read
 from PostgreSQL instead.
 
+**The AI component is the LLM service.** Today it saves advice and, when asked, has Groq write
+it. In Phase III it will also build a recommendation summary: it calls the Flight, Hotel, Car
+Rental and Activity services directly (the dotted arrows from `llm`), lets the model choose
+among the results, adds up the cost in code, and saves the result in `llm_db`. There is no
+separate agent calling the gateway.
+
 ## 2. Containers and ports
 
 | Container | Image / folder | Port | Published | Depends on |
 |---|---|---|---|---|
 | `gateway` | `backend/gateway` | 8080 | `8080` (all clients) | none (answers 502 if a service is down) |
+| `trip-service` | `backend/trip-service` | 3001 | `127.0.0.1:3001` | postgres (healthy) |
 | `flight-service` | `backend/flight-service` | 3004 | `127.0.0.1:3004` | postgres (healthy), redis |
 | `hotel-service` | `backend/hotel-service` | 3005 | `127.0.0.1:3005` | postgres (healthy), redis |
 | `car-rental-service` | `backend/car-rental-service` | 3006 | `127.0.0.1:3006` | postgres (healthy), redis |
@@ -209,8 +229,51 @@ erDiagram
 ```
 
 The tables are deliberately separate databases with no foreign keys between them.
-`ADVICE.user_id` and `ADVICE.trip_id` point at users and trips owned by the Travel service
-(not built yet), so they are plain values, not enforced references.
+`ADVICE.user_id` and `ADVICE.trip_id` point at users and trips owned by the trip service,
+so they are plain values, not enforced references.
+
+`trip_db` (trip service) has its own foreign keys inside the one database:
+
+```mermaid
+erDiagram
+    USERS ||--o{ TRIPS : owns
+    TRIPS ||--|{ ITINERARIES : "one per date"
+    ITINERARIES ||--o{ ITINERARY_ITEMS : "ordered by position"
+    PLACES ||--o{ ITINERARY_ITEMS : "visited in"
+    USERS {
+        int id PK
+        text name
+        text email
+        text password_hash
+    }
+    TRIPS {
+        int id PK
+        int owner_id FK
+        text title
+        text destination
+        date start_date
+        date end_date
+    }
+    ITINERARIES {
+        int id PK
+        int trip_id FK
+        int day_number
+        date date
+    }
+    ITINERARY_ITEMS {
+        int id PK
+        int itinerary_id FK
+        int place_id FK
+        int position
+    }
+    PLACES {
+        int id PK
+        text google_place_id
+        text name
+        text city
+        text category
+    }
+```
 
 ## 6. Where the pieces live
 
@@ -220,6 +283,7 @@ Travel-Assistant/
 ├── docs/ARCHITECTURE.md        this file
 └── backend/
     ├── gateway/                routing table in src/routes.js, URLs in src/config.js, openapi.yaml
+    ├── trip-service/           accounts, trips, itineraries (hand-written; see its README.md)
     ├── flight-service/         each CRUD service has the same layout:
     ├── hotel-service/            server.js            start-up
     ├── car-rental-service/       src/resource.js      fields, filters, sample data (the only file that differs)

@@ -7,14 +7,20 @@ parent folder starts them all. Clients only talk to the gateway on port 8080.
 | Folder | Port | Owns | Data |
 |---|---|---|---|
 | `gateway` | 8080 | Routing, CORS, request IDs, timeouts, `/api/health` | none |
+| `trip-service` | 3001 | `/api/auth`, `/api/users`, `/api/trips` (with itineraries), `/api/places` | `trip_db` |
 | `flight-service` | 3004 | `/api/flights` | `flight_db` + Redis cache |
 | `hotel-service` | 3005 | `/api/hotels` | `hotel_db` + Redis cache |
 | `car-rental-service` | 3006 | `/api/car-rentals` | `car_rental_db` + Redis cache |
 | `activity-service` | 3007 | `/api/activities` | `activity_db` + Redis cache |
 | `llm-service` | 3008 | `/api/advice` (LLM travel advice) | `llm_db` |
 
-The gateway's `SEARCH_SERVICE_URL` points at the activity service. Trip, budget and
-auth services from the design are not built yet.
+The gateway's `SEARCH_SERVICE_URL` points at the activity service. The budget service
+from the design is not built yet.
+
+**Trip service:** accounts (JWT login), trips, and day-by-day itineraries. It is written
+by hand rather than from the shared CRUD template, so it has its own layout and README:
+see [`trip-service/README.md`](trip-service/README.md). Most of its routes need an
+`Authorization: Bearer <token>` header from `POST /api/auth/login`.
 
 ## Docs
 

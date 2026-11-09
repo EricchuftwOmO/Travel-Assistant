@@ -1,0 +1,1612 @@
+{
+  "info": {
+    "name": "Travel Assistant API (Phase II)",
+    "description": "Runs against the API gateway (docker compose up --build). Covers CRUD, filtering, validation errors, and the recommendation summary (business logic). Every request has tests; records it creates it deletes.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. Health",
+      "item": [
+        {
+          "name": "Gateway liveness",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('status ok', () => pm.expect(body.status).to.eql('ok'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Combined service health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 or 503 (degraded)', () => pm.expect([200, 503]).to.include(pm.response.code));",
+                  "const body = pm.response.json();",
+                  "['trip', 'flight', 'hotel', 'carRental', 'search', 'llm'].forEach((s) => pm.test(`${s} service is up`, () => pm.expect(body.services[s].status).to.eql('up')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            },
+            "description": "Returns 503 (degraded) while the planned Budget service does not exist; every service built so far must be up."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Flights (CRUD)",
+      "item": [
+        {
+          "name": "List flights, filtered and sorted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('X-Total-Count header matches total', () => pm.expect(Number(pm.response.headers.get('X-Total-Count'))).to.eql(body.total));",
+                  "pm.test('every flight is SEA to HND', () => body.data.forEach((f) => { pm.expect(f.origin).to.eql('SEA'); pm.expect(f.destination).to.eql('HND'); }));",
+                  "pm.test('sorted by price ascending', () => { const p = body.data.map((f) => f.price); pm.expect(p).to.eql([...p].sort((a, b) => a - b)); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/flights?origin=SEA&destination=HND&sort=price",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "flights"
+              ],
+              "query": [
+                {
+                  "key": "origin",
+                  "value": "SEA"
+                },
+                {
+                  "key": "destination",
+                  "value": "HND"
+                },
+                {
+                  "key": "sort",
+                  "value": "price"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create a flight",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Location header points at the new flight', () => pm.expect(pm.response.headers.get('Location')).to.eql(`/api/flights/${body.id}`));",
+                  "pm.test('price stored as a number', () => pm.expect(body.price).to.eql(777.7));",
+                  "pm.collectionVariables.set('flightId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"airline\": \"Test Air\",\n  \"flight_number\": \"TA 100\",\n  \"origin\": \"SEA\",\n  \"destination\": \"HND\",\n  \"depart_at\": \"2027-03-01T10:00:00Z\",\n  \"arrive_at\": \"2027-03-02T14:00:00Z\",\n  \"price\": 777.7,\n  \"currency\": \"USD\",\n  \"seats_available\": 9\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/flights",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "flights"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get the flight",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('is the flight we created', () => pm.expect(body.flight_number).to.eql('TA 100'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/flights/{{flightId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "flights",
+                "{{flightId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update the price (PATCH)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('price changed, other fields kept', () => { pm.expect(body.price).to.eql(650); pm.expect(body.airline).to.eql('Test Air'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": 650\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/flights/{{flightId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "flights",
+                "{{flightId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete the flight",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/flights/{{flightId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "flights",
+                "{{flightId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get the deleted flight -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test('Error uses { error: { code, message } } with code NOT_FOUND', () => { pm.expect(body.error.code).to.eql('NOT_FOUND'); pm.expect(body.error.message).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/flights/{{flightId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "flights",
+                "{{flightId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: create with missing and invalid fields -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('Error uses { error: { code, message } } with code BAD_REQUEST', () => { pm.expect(body.error.code).to.eql('BAD_REQUEST'); pm.expect(body.error.message).to.be.a('string'); });",
+                  "pm.test('details list every bad field', () => { const f = body.error.details.map((d) => d.field); ['flight_number', 'origin', 'destination', 'depart_at', 'arrive_at', 'price', 'bogus'].forEach((x) => pm.expect(f).to.include(x)); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"airline\": \"X\",\n  \"price\": -5,\n  \"bogus\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/flights",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "flights"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: bad sort column -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('Error uses { error: { code, message } } with code BAD_REQUEST', () => { pm.expect(body.error.code).to.eql('BAD_REQUEST'); pm.expect(body.error.message).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/flights?sort=password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "flights"
+              ],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": "password"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Hotels, car rentals, activities",
+      "item": [
+        {
+          "name": "Hotels: Tokyo, 4+ stars, under $200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('only matching hotels', () => body.data.forEach((h) => { pm.expect(h.city).to.eql('Tokyo'); pm.expect(h.stars).to.be.at.least(4); pm.expect(h.price_per_night).to.be.at.most(200); pm.expect(h.available).to.eql(true); }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/hotels?city=Tokyo&minStars=4&maxPrice=200&available=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hotels"
+              ],
+              "query": [
+                {
+                  "key": "city",
+                  "value": "Tokyo"
+                },
+                {
+                  "key": "minStars",
+                  "value": "4"
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "200"
+                },
+                {
+                  "key": "available",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Car rentals: SUVs in Seattle",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('only SUVs', () => body.data.forEach((c) => pm.expect(c.car_type).to.eql('suv')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/car-rentals?city=Seattle&carType=suv",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "car-rentals"
+              ],
+              "query": [
+                {
+                  "key": "city",
+                  "value": "Seattle"
+                },
+                {
+                  "key": "carType",
+                  "value": "suv"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: unknown car type -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('Error uses { error: { code, message } } with code BAD_REQUEST', () => { pm.expect(body.error.code).to.eql('BAD_REQUEST'); pm.expect(body.error.message).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/car-rentals?carType=boat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "car-rentals"
+              ],
+              "query": [
+                {
+                  "key": "carType",
+                  "value": "boat"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Activities: name contains \"market\", best rated first",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('names contain market', () => body.data.forEach((a) => pm.expect(a.name.toLowerCase()).to.include('market')));",
+                  "pm.test('rating descending', () => { const r = body.data.map((a) => a.rating); pm.expect(r).to.eql([...r].sort((a, b) => b - a)); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/activities?q=market&sort=rating&order=desc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "activities"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "market"
+                },
+                {
+                  "key": "sort",
+                  "value": "rating"
+                },
+                {
+                  "key": "order",
+                  "value": "desc"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Advice (LLM service)",
+      "item": [
+        {
+          "name": "Save your own advice (no model call)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('source is user', () => pm.expect(body.source).to.eql('user'));",
+                  "pm.collectionVariables.set('adviceId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"postman\",\n  \"trip_id\": 1,\n  \"topic\": \"packing\",\n  \"prompt\": \"What to pack?\",\n  \"content\": \"Layers and a rain jacket.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/advice",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ask for advice (model, or a labelled placeholder without an API key)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('answer was written', () => pm.expect(body.content).to.be.a('string').and.not.empty);",
+                  "pm.test('source is llm or stub', () => pm.expect(['llm', 'stub']).to.include(body.source));",
+                  "pm.collectionVariables.set('adviceId2', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"postman\",\n  \"topic\": \"safety\",\n  \"prompt\": \"Is Tokyo safe at night?\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/advice",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List my advice",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('has the two records', () => pm.expect(body.total).to.be.at.least(2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/advice?userId=postman",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice"
+              ],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "postman"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: missing prompt -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('Error uses { error: { code, message } } with code BAD_REQUEST', () => { pm.expect(body.error.code).to.eql('BAD_REQUEST'); pm.expect(body.error.message).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/advice",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cleanup: delete advice 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/advice/{{adviceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice",
+                "{{adviceId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cleanup: delete advice 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/advice/{{adviceId2}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice",
+                "{{adviceId2}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Trip service (accounts, trips, itineraries)",
+      "description": "Eric's trip service through the gateway. Signs in as the seeded user alice@example.com, creates a trip and checks its day-by-day itinerary, then deletes it.",
+      "item": [
+        {
+          "name": "Login (seeded user) -> token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('returns a token and the user', () => { pm.expect(body.token).to.be.a('string').and.not.empty; pm.expect(body.user.email).to.eql('alice@example.com'); });",
+                  "pm.test('password hash is never returned', () => pm.expect(JSON.stringify(body)).to.not.include('password'));",
+                  "pm.collectionVariables.set('token', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"Password123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: wrong password -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"nope\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: trips without a token -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                  "const body = pm.response.json();",
+                  "pm.test('error body present', () => pm.expect(body.error.code).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips"
+              ]
+            }
+          }
+        },
+        {
+          "name": "My trips (token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('returns the signed-in user's trips only', () => { const list = Array.isArray(body) ? body : body.data; pm.expect(list).to.be.an('array').that.is.not.empty; list.forEach((t) => pm.expect(t.ownerId).to.eql(1)); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create a 3-day trip",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('trip belongs to the caller', () => pm.expect(body.ownerId).to.eql(1));",
+                  "pm.collectionVariables.set('tripId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman trip\",\n  \"destination\": \"Tokyo\",\n  \"startDate\": \"2027-03-01\",\n  \"endDate\": \"2027-03-03\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/trips",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips"
+              ]
+            }
+          }
+        },
+        {
+          "name": "The trip has one itinerary day per date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('3 days for 3 dates', () => { const days = Array.isArray(body) ? body : (body.data || body.itineraries); pm.expect(days).to.have.lengthOf(3); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips/{{tripId}}/itineraries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips",
+                "{{tripId}}",
+                "itineraries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: create with bad dates -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('error body present', () => pm.expect(body.error.code).to.eql('BAD_REQUEST'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Bad\",\n  \"destination\": \"X\",\n  \"startDate\": \"2027-03-05\",\n  \"endDate\": \"2027-03-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/trips",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Places in Tokyo (token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('has places', () => { const list = Array.isArray(body) ? body : body.data; pm.expect(list).to.be.an('array').that.is.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/places?city=Tokyo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "places"
+              ],
+              "query": [
+                {
+                  "key": "city",
+                  "value": "Tokyo"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cleanup: delete the trip",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips/{{tripId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips",
+                "{{tripId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Recommendation summary (business logic)",
+      "description": "POST /api/advice/recommendations: the LLM service calls the Flight, Hotel and Activity services, picks a package, adds up the cost in code and saves the summary.",
+      "item": [
+        {
+          "name": "Recommend a 5-night Tokyo trip within $2500",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Location header points at the saved advice', () => pm.expect(pm.response.headers.get('Location')).to.eql(`/api/advice/${body.id}`));",
+                  "pm.test('total equals the sum of the breakdown (computed in code)', () => pm.expect(body.total).to.be.closeTo(body.breakdown.flights + body.breakdown.hotel + body.breakdown.activities, 0.01));",
+                  "pm.test('within budget and remaining is budget minus total', () => { pm.expect(body.within_budget).to.eql(true); pm.expect(body.remaining).to.be.closeTo(body.budget - body.total, 0.01); });",
+                  "pm.test('selection uses real ids', () => { pm.expect(body.selection.flight_id).to.be.a('number'); pm.expect(body.selection.hotel_id).to.be.a('number'); pm.expect(body.selection.activity_ids).to.be.an('array').that.is.not.empty; });",
+                  "pm.test('summary is saved and mentions the total', () => pm.expect(body.summary).to.include('Total $'));",
+                  "pm.collectionVariables.set('recoId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"postman\",\n  \"trip_id\": 1,\n  \"origin\": \"SEA\",\n  \"destination\": \"Tokyo\",\n  \"nights\": 5,\n  \"travelers\": 1,\n  \"budget\": 2500,\n  \"preferences\": \"food and museums\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/advice/recommendations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice",
+                "recommendations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "The recommendation was saved as advice",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('topic itinerary, owned by postman', () => { pm.expect(body.topic).to.eql('itinerary'); pm.expect(body.user_id).to.eql('postman'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/advice/{{recoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice",
+                "{{recoId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Tight budget: package is reported as over budget, not hidden",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('over budget is reported honestly', () => { pm.expect(body.within_budget).to.eql(false); pm.expect(body.remaining).to.be.below(0); });",
+                  "pm.test('cheapest hotel was used', () => pm.expect(body.breakdown.hotel).to.eql(240));",
+                  "pm.collectionVariables.set('recoId2', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"postman\",\n  \"origin\": \"SEA\",\n  \"destination\": \"Tokyo\",\n  \"nights\": 5,\n  \"budget\": 900\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/advice/recommendations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice",
+                "recommendations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Two travelers: flight and activities double, hotel room does not",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('flight and activities are doubled for 2 travelers', () => { pm.expect(body.breakdown.flights).to.eql(1691); pm.expect(body.breakdown.activities).to.eql(194); });",
+                  "pm.test('the hotel room is charged once: best-rated hotel 410 x 2 nights, not x 2 travelers', () => pm.expect(body.breakdown.hotel).to.eql(820));",
+                  "pm.collectionVariables.set('recoId3', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"postman\",\n  \"origin\": \"SEA\",\n  \"destination\": \"Tokyo\",\n  \"nights\": 2,\n  \"travelers\": 2,\n  \"budget\": 5000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/advice/recommendations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice",
+                "recommendations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Include a rental car (charged per day, once)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('a car was selected', () => pm.expect(body.selection.car_rental_id).to.be.a('number'));",
+                  "pm.test('car cost = cheapest Tokyo car 61/day x 3 days', () => pm.expect(body.breakdown.car_rental).to.eql(183));",
+                  "pm.test('total includes the car', () => pm.expect(body.total).to.be.closeTo(body.breakdown.flights + body.breakdown.hotel + body.breakdown.car_rental + body.breakdown.activities, 0.01));",
+                  "pm.collectionVariables.set('recoId4', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"postman\",\n  \"origin\": \"SEA\",\n  \"destination\": \"Tokyo\",\n  \"nights\": 3,\n  \"budget\": 5000,\n  \"include_car\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/advice/recommendations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice",
+                "recommendations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: missing user_id and negative budget -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('Error uses { error: { code, message } } with code BAD_REQUEST', () => { pm.expect(body.error.code).to.eql('BAD_REQUEST'); pm.expect(body.error.message).to.be.a('string'); });",
+                  "pm.test('details name both fields', () => { const f = body.error.details.map((d) => d.field); pm.expect(f).to.include.members(['user_id', 'budget']); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination\": \"Tokyo\",\n  \"budget\": -5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/advice/recommendations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice",
+                "recommendations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: destination with no data -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test('Error uses { error: { code, message } } with code NOT_FOUND', () => { pm.expect(body.error.code).to.eql('NOT_FOUND'); pm.expect(body.error.message).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"postman\",\n  \"destination\": \"Atlantis\",\n  \"budget\": 1000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/advice/recommendations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice",
+                "recommendations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cleanup: delete recommendations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/advice/{{recoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice",
+                "{{recoId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cleanup 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/advice/{{recoId2}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice",
+                "{{recoId2}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cleanup 3",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/advice/{{recoId3}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice",
+                "{{recoId3}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cleanup 4",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/advice/{{recoId4}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice",
+                "{{recoId4}}"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ]
+}

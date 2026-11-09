@@ -26,7 +26,7 @@ function cors(allowedOrigins) {
         if (origin && (allowAny || allowedOrigins.includes(origin))) {
             res.set({
                 'Access-Control-Allow-Origin': allowAny ? '*' : origin,
-                'Access-Control-Expose-Headers': 'X-Request-Id, Location',
+                'Access-Control-Expose-Headers': 'X-Request-Id, Location, X-Total-Count',
             });
             if (!allowAny) res.vary('Origin');
         }

@@ -1,0 +1,31 @@
+<!doctype html><meta charset="utf-8"><style>
+*{box-sizing:border-box} body{margin:0;padding:24px;background:#fff;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1d2433}
+.win{width:760px;border:2px solid #1a3366;border-radius:12px;overflow:hidden;background:#fff}
+.nav{background:#1a3366;color:#fff;display:flex;align-items:center;gap:8px;padding:10px 16px;font-size:14px}
+.nav b{font-size:16px;margin-right:auto}.tab{padding:5px 12px;border-radius:14px;background:rgba(255,255,255,.15)}
+.tab.on{background:#fff;color:#1a3366;font-weight:700}
+.body{padding:18px 20px}.h{font-size:20px;font-weight:700;margin:0 0 12px;color:#1a3366;display:flex;justify-content:space-between;align-items:center}
+.fields{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+label{font-size:11px;color:#667;display:block;margin-bottom:3px;letter-spacing:.04em}
+.in{border:1.5px solid #b8c2d8;border-radius:6px;padding:8px 10px;font-size:14px;background:#fafcff}
+.btn{display:inline-block;background:#2b5cb8;color:#fff;border-radius:7px;padding:8px 14px;font-size:13px;font-weight:600}
+.btn.ghost{background:#fff;color:#2b5cb8;border:1.5px solid #2b5cb8}.btn.red{background:#c0392b}.btn.green{background:#2e8b4a}
+.btn.sm{padding:5px 10px;font-size:12px}
+.card{border:1.5px solid #d4dbea;border-radius:10px;padding:11px 14px;margin-bottom:9px;display:flex;align-items:center;gap:12px;background:#fff}
+.card .grow{flex:1}.card small{color:#667;display:block;font-size:12px;margin-top:2px}.price{font-weight:700;font-size:16px}
+.note{font-size:12px;color:#667;margin-top:8px}.sep{height:1px;background:#e1e6f0;margin:14px 0}
+.tabs{display:flex;gap:6px;margin-bottom:12px}.t{padding:6px 14px;border-radius:7px;background:#eef2fa;font-size:13px}.t.on{background:#2b5cb8;color:#fff;font-weight:700}
+.num{width:26px;height:26px;border-radius:50%;background:#1a3366;color:#fff;text-align:center;line-height:26px;font-size:12px;font-weight:700}
+.sum{display:flex;gap:14px;margin-bottom:12px}.stat{flex:1;border-radius:10px;background:#eef2fa;padding:10px 14px}.stat b{font-size:22px;display:block}
+.you{background:#e3edff;border-radius:12px;padding:10px 14px;margin-bottom:10px;font-size:14px}
+.bot{background:#f1f8f3;border:1.5px solid #bfe0c8;border-radius:12px;padding:12px 14px;font-size:14px}
+.warn{font-size:12px;color:#8a5300;background:#fff6e5;border-radius:6px;padding:6px 10px;margin-top:8px;display:inline-block}
+.row{display:flex;justify-content:space-between;padding:5px 0;font-size:14px}.row.tot{font-weight:700;border-top:1.5px solid #1a3366;margin-top:4px;padding-top:8px}
+.states{font-size:12px;color:#667;margin-top:10px}
+</style><div class="win"><div class="nav"><b>Travel Assistant</b><span class="tab">Flights</span><span class="tab on">My Trips</span><span class="tab">Expenses</span><span class="tab">AI Assistant</span></div><div class="body">
+<div class="h">My Trips <span class="btn">+ New Trip</span></div>
+<div class="card"><div class="grow"><b>Japan Trip</b><small>JAN 28 &ndash; FEB 03, 2027 &middot; Tokyo</small></div><span class="price" style="font-size:14px">7 days</span></div>
+<div class="card"><div class="grow"><b>California Road Trip</b><small>MAR 10 &ndash; MAR 15, 2027 &middot; California</small></div><span class="price" style="font-size:14px">6 days</span></div>
+<div class="card"><div class="grow"><b>Taiwan Trip</b><small>JUN 01 &ndash; JUN 10, 2027 &middot; Taiwan</small></div><span class="price" style="font-size:14px">10 days</span></div>
+<div class="note">Open a trip to see its details. A trip can be created without a flight.</div>
+<div class="states">States: loading &middot; empty ("Create your first trip") &middot; error + retry</div></div></div>

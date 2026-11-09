@@ -30,3 +30,14 @@ tasks:
     dir: backend/gateway
     cmds:
       - npm test
+
+  test-llm:
+    desc: Run the LLM service tests (validation, costing, recommendation route)
+    dir: backend/llm-service
+    cmds:
+      - npm test
+
+  postman:
+    desc: Run the Postman collection against the running stack (task up first)
+    cmds:
+      - npx newman run tests/postman/Travel-Assistant.postman_collection.json -e tests/postman/local.postman_environment.json

@@ -13,6 +13,7 @@ The first matching rule wins:
 |---|---|---|---|
 | `/api/trips/:tripId/budget` | Budget | `http://localhost:3003` | 5 s |
 | `/api/trips`, `/api/trips/*` | Trip | `http://localhost:3001` | 5 s |
+| `/api/auth/*`, `/api/users/*`, `/api/places` | Trip (accounts and places catalog) | `http://localhost:3001` | 5 s |
 | `/api/activities/*` | Activity (`SEARCH_SERVICE_URL`) | `http://localhost:3007` | 5 s |
 | `/api/budget/*` | Budget | `http://localhost:3003` | 5 s |
 | `/api/flights/*` | Flight | `http://localhost:3004` | 5 s |
