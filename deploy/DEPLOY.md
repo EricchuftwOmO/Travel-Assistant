@@ -2,7 +2,6 @@
 
 Everything runs in Docker. Each service has its own `Dockerfile` and `.dockerignore` under `backend/`
 (`deploy/Dockerfile` is a copy of one for reference). `docker-compose.yml` starts the whole system.
-A recorded run: `deploy/evidence/docker-run.txt`.
 
 ## Build and run
 
