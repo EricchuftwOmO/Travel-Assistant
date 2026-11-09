@@ -78,6 +78,10 @@ test('routes each path to the owning service', async () => {
         ['/api/trips/1', 'trip'],
         ['/api/trips/1/items', 'trip'],
         ['/api/trips/1/budget', 'budget'],
+        ['/api/trips/1/itineraries/2/items', 'trip'],
+        ['/api/auth/login', 'trip'],
+        ['/api/users/me', 'trip'],
+        ['/api/places?city=Tokyo', 'trip'],
         ['/api/activities/search?city=seattle', 'search'],
         ['/api/budget/estimate', 'budget'],
         ['/api/flights?origin=SEA', 'flight'],
@@ -174,6 +178,7 @@ test('unconfigured planner is not routed', async () => {
 test('CORS: allowed origin gets headers, preflight answered by the gateway', async () => {
     let res = await fetch(`${gateway}/api/trips`, { headers: { Origin: 'http://localhost:5173' } });
     assert.equal(res.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+    assert.match(res.headers.get('access-control-expose-headers'), /X-Total-Count/);
 
     res = await fetch(`${gateway}/api/trips`, { headers: { Origin: 'http://evil.example' } });
     assert.equal(res.headers.get('access-control-allow-origin'), null);

@@ -12,18 +12,19 @@
 # each service on first start), and one Redis used as a GET cache by the
 # flight, hotel, car-rental and activity services (keys are prefixed per service).
 # Set GROQ_API_KEY in .env for real LLM answers; without it advice is a placeholder.
+# Set JWT_SECRET in .env to sign the trip service's login tokens.
 #
 # Adding a service: give it a folder in backend/ with its own Dockerfile and a
 # GET /health endpoint, add a block below (no "ports:"), and point the gateway's
 # matching *_SERVICE_URL at it, e.g.
 #
-#   trip-service:
-#     build: ./backend/trip-service
+#   budget-service:
+#     build: ./backend/budget-service
 #     environment:
-#       PORT: 3001
+#       PORT: 3003
 #       DATABASE_URL: postgres://...
 #     healthcheck:
-#       test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+#       test: ["CMD", "wget", "-qO-", "http://localhost:3003/health"]
 #       interval: 10s
 #       timeout: 3s
 #       retries: 3
@@ -66,6 +67,25 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+
+  trip-service:
+    build: ./backend/trip-service
+    ports:
+      - "127.0.0.1:3001:3001"   # dev only: Swagger UI at http://localhost:3001/docs
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/trip_db
+      # Signs login tokens. Set a long random JWT_SECRET in .env; the default is for local development only.
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
     restart: unless-stopped
 
   flight-service:
