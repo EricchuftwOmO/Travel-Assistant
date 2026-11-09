@@ -66,7 +66,7 @@ curl -X POST http://localhost:8080/api/advice/recommendations -H "Authorization:
 
 ```sh
 # Postman collection (needs the stack running): 41 requests, 93 assertions
-npx newman run tests/postman/Travel-Assistant.postman_collection.json -e tests/postman/local.postman_environment.json
+npx newman run tests/Travel-Assistant.postman_collection.json -e tests/local.postman_environment.json
 
 # Unit tests (Node 22+, no database needed)
 (cd backend/gateway && npm install && npm test)        # 15 tests
@@ -85,7 +85,7 @@ backend/        gateway, trip-service, flight/hotel/car-rental/activity-service,
 docker-compose.yml
 data/           SQL exports of the six databases
 tests/          Postman collection and environment (import into Postman)
-deploy/         deployment guide and Docker evidence
+deploy/         deployment guide and a reference Dockerfile
 docs/ARCHITECTURE.md
 ```
 
