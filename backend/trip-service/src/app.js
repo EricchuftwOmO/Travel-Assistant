@@ -1,5 +1,5 @@
-// 讀取專案根目錄下的 .env 檔案，並把裡面定義的變數載入到 Node.js 的 process.env 環境變數中
-require('dotenv').config();
+// Builds the Express app: health check, API docs, routes, and error handling.
+// server.js prepares the database and starts listening.
 
 const fs = require('fs');
 const path = require('path');
@@ -7,15 +7,13 @@ const express = require('express');
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yaml');
 const db = require('./data/db');
-const { ensureDatabase, ensureSchema } = require('./data/setup');
 const routes = require('./routes');
 const { notFound, errorHandler } = require('./middleware/errorHandlers');
 
-const app = express();
-const PORT = process.env.PORT || 3001;
-const specPath = path.join(__dirname, 'openapi.yaml');
+const specPath = path.join(__dirname, '..', 'openapi.yaml');
 const apiSpec = YAML.parse(fs.readFileSync(specPath, 'utf8'));
 
+const app = express();
 app.disable('x-powered-by');
 
 // Middleware
@@ -43,22 +41,4 @@ app.use('/api', routes);
 app.use(notFound);
 app.use(errorHandler);
 
-// Prepare the database, then listen. On failure, exit with a clear message;
-// Docker Compose restarts the service (for example while PostgreSQL is starting).
-const start = async () => {
-  await ensureDatabase();
-  if (await ensureSchema(db)) console.log('Created the tables and loaded the sample data');
-  const server = app.listen(PORT, (err) => {
-    if (err) throw err;
-    console.log(`trip-service running on port ${PORT}`);
-  });
-  // docker stop sends SIGTERM: finish open requests, then exit
-  const shutdown = () => server.close(() => process.exit(0));
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
-};
-
-start().catch((err) => {
-  console.error('trip-service failed to start:', err.message);
-  process.exit(1);
-});
+module.exports = app;

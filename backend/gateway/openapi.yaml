@@ -147,7 +147,7 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
                 error:
-                  status: 401
+                  code: UNAUTHORIZED
                   message: Email or password is incorrect
         "500":
           $ref: "#/components/responses/ServerError"
@@ -630,7 +630,7 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
                 error:
-                  status: 400
+                  code: BAD_REQUEST
                   message: Request validation failed
                   details:
                     - position must be between 1 and 3
@@ -728,7 +728,7 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
                 error:
-                  status: 400
+                  code: BAD_REQUEST
                   message: Request validation failed
                   details:
                     - itemIds must list every item of this day exactly once
@@ -2268,11 +2268,13 @@ components:
         error:
           type: object
           required:
-            - status
+            - code
             - message
           properties:
-            status:
-              type: integer
+            code:
+              type: string
+              description: "Machine-readable error code, shared with the other services and the gateway: BAD_REQUEST (400), UNAUTHORIZED (401), NOT_FOUND (404), CONFLICT (409), or INTERNAL_ERROR (500)."
+              example: NOT_FOUND
             message:
               type: string
             details:
@@ -3115,7 +3117,7 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
           example:
             error:
-              status: 400
+              code: BAD_REQUEST
               message: Request validation failed
               details:
                 - endDate must be on or after startDate
@@ -3133,7 +3135,7 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
           example:
             error:
-              status: 401
+              code: UNAUTHORIZED
               message: Token is invalid or expired
     TripNotFound:
       description: The trip does not exist or belongs to another user
@@ -3143,7 +3145,7 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
           example:
             error:
-              status: 404
+              code: NOT_FOUND
               message: Trip not found
     DayNotFound:
       description: The trip does not exist or belongs to another user (`Trip not found`), or the trip has no such day (`Day not found`)
@@ -3153,7 +3155,7 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
           example:
             error:
-              status: 404
+              code: NOT_FOUND
               message: Day not found
     ItemNotFound:
       description: The trip, the day, or the item does not exist, or the trip belongs to another user
@@ -3163,7 +3165,7 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
           example:
             error:
-              status: 404
+              code: NOT_FOUND
               message: Itinerary item not found
     DaysInUse:
       description: The new dates would remove days that still have places. Nothing was changed.
@@ -3173,7 +3175,7 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
           example:
             error:
-              status: 409
+              code: CONFLICT
               message: The new dates would remove days that still have places
               details:
                 - Day 5 has places; remove them first
@@ -3185,7 +3187,7 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
           example:
             error:
-              status: 409
+              code: CONFLICT
               message: Email is already registered
     ServerError:
       description: An unexpected server error occurred
@@ -3195,7 +3197,7 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
           example:
             error:
-              status: 500
+              code: INTERNAL_ERROR
               message: Internal server error
     BadRequest:
       description: The request is missing or has an invalid parameter

@@ -40,7 +40,7 @@ From the repository root:
 docker compose up --build -d
 ```
 
-Compose starts the gateway, this service, and the other services. On its first start this service creates the `trip_db` database on the shared PostgreSQL server, then creates the tables from `data/schema.sql` and loads the sample data from `data/seed.sql`. Later starts keep the existing data.
+Compose starts the gateway, this service, and the other services. On its first start this service creates the `trip_db` database on the shared PostgreSQL server, then creates the tables from `src/data/schema.sql` and loads the sample data from `src/data/seed.sql`. Later starts keep the existing data.
 
 | Page | URL |
 |---|---|
@@ -141,14 +141,16 @@ The item IDs come from `GET /api/trips/1/itineraries/1`, and `itemIds` must list
 
 ### Status Codes
 
-| Code | Meaning |
-|---|---|
-| 200 / 201 / 204 | Success, created, or success with no content |
-| 400 | Invalid input, such as an unknown `placeId` or a position past the end of the day |
-| 401 | Missing or invalid token, or incorrect login |
-| 404 | The route, trip, day, or item was not found, including another user's trip |
-| 409 | The email is already registered, or new trip dates would remove days that still have places |
-| 500 | Unexpected server error |
+| Status | `error.code` | Meaning |
+|---|---|---|
+| 200 / 201 / 204 | | Success, created, or success with no content |
+| 400 | `BAD_REQUEST` | Invalid input, such as an unknown `placeId` or a position past the end of the day |
+| 401 | `UNAUTHORIZED` | Missing or invalid token, or incorrect login |
+| 404 | `NOT_FOUND` | The route, trip, day, or item was not found, including another user's trip |
+| 409 | `CONFLICT` | The email is already registered, or new trip dates would remove days that still have places |
+| 500 | `INTERNAL_ERROR` | Unexpected server error |
+
+Errors use the same JSON shape as the other services: `{ "error": { "code", "message", "details" } }`. On validation errors, `details` lists each problem.
 
 ### HTTP Headers
 
@@ -170,14 +172,16 @@ To send requests from that page, log in through `POST /auth/login`, click **Auth
 
 ```
 backend/trip-service/
-├── app.js            # Express setup, /health, /docs, and start-up
-├── openapi.yaml      # OpenAPI specification for this service
+├── server.js           # Start-up: prepare the database, then listen
+├── openapi.yaml        # OpenAPI specification for this service
 ├── Dockerfile
-├── routes/           # URL-to-controller mapping
-├── controllers/      # Request handling and HTTP responses
-├── data/             # Database connection, start-up setup, SQL queries, schema, and seed data
-├── helpers/          # Validation, authentication, and shared error type
-└── middleware/       # Authentication and error handling
+└── src/
+    ├── app.js          # Express setup: /health, /docs, routes, and error handling
+    ├── routes/         # URL-to-controller mapping
+    ├── controllers/    # Request handling and HTTP responses
+    ├── data/           # Database connection, start-up setup, SQL queries, schema, and seed data
+    ├── helpers/        # Validation, authentication, and shared error type
+    └── middleware/     # Authentication and error handling
 ```
 
 A request moves through `route → controller → data → PostgreSQL`. Each service module has its own route, controller, and query files:
@@ -189,7 +193,7 @@ A request moves through `route → controller → data → PostgreSQL`. Each ser
 
 ## Data Source
 
-The data in `data/seed.sql` is simulated. It contains 5 users, 15 trips, 22 places, 116 itinerary days (one for each date of each trip), and 14 planned itinerary items. The places are well-known landmarks entered by hand with a name, city, and category. No external dataset or real personal data is used.
+The data in `src/data/seed.sql` is simulated. It contains 5 users, 15 trips, 22 places, 116 itinerary days (one for each date of each trip), and 14 planned itinerary items. The places are well-known landmarks entered by hand with a name, city, and category. No external dataset or real personal data is used.
 
 ## Design Notes and Limitations
 

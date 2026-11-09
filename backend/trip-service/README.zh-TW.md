@@ -40,7 +40,7 @@
 docker compose up --build -d
 ```
 
-Compose 會啟動 gateway、這個服務和其他服務。第一次啟動時，這個服務會在共用的 PostgreSQL 上建立 `trip_db` 資料庫，再用 `data/schema.sql` 建立資料表，並載入 `data/seed.sql` 的範例資料。之後的啟動會保留現有資料。
+Compose 會啟動 gateway、這個服務和其他服務。第一次啟動時，這個服務會在共用的 PostgreSQL 上建立 `trip_db` 資料庫，再用 `src/data/schema.sql` 建立資料表，並載入 `src/data/seed.sql` 的範例資料。之後的啟動會保留現有資料。
 
 | 頁面 | 網址 |
 |---|---|
@@ -141,14 +141,16 @@ curl -X PUT http://localhost:8080/api/trips/1/itineraries/1/items/order \
 
 ### 狀態碼
 
-| 狀態碼 | 意義 |
-|---|---|
-| 200 / 201 / 204 | 成功、已建立，或成功但沒有回應內容 |
-| 400 | 輸入無效，例如不存在的 `placeId`，或位置超出當天的範圍 |
-| 401 | Token 缺少或無效，或登入資訊錯誤 |
-| 404 | 找不到路由、旅行、天數或行程項目，包含屬於其他使用者的旅行 |
-| 409 | Email 已被註冊，或新的旅行日期會刪掉還有景點的天數 |
-| 500 | 伺服器發生非預期錯誤 |
+| 狀態碼 | `error.code` | 意義 |
+|---|---|---|
+| 200 / 201 / 204 | | 成功、已建立，或成功但沒有回應內容 |
+| 400 | `BAD_REQUEST` | 輸入無效，例如不存在的 `placeId`，或位置超出當天的範圍 |
+| 401 | `UNAUTHORIZED` | Token 缺少或無效，或登入資訊錯誤 |
+| 404 | `NOT_FOUND` | 找不到路由、旅行、天數或行程項目，包含屬於其他使用者的旅行 |
+| 409 | `CONFLICT` | Email 已被註冊，或新的旅行日期會刪掉還有景點的天數 |
+| 500 | `INTERNAL_ERROR` | 伺服器發生非預期錯誤 |
+
+錯誤回應和其他服務使用相同的 JSON 格式：`{ "error": { "code", "message", "details" } }`。驗證錯誤時，`details` 會列出每個問題。
 
 ### HTTP Headers
 
@@ -170,14 +172,16 @@ curl -X PUT http://localhost:8080/api/trips/1/itineraries/1/items/order \
 
 ```
 backend/trip-service/
-├── app.js            # Express 設定、/health、/docs 與啟動流程
-├── openapi.yaml      # 這個服務的 OpenAPI 規格
+├── server.js           # 啟動流程：準備資料庫，然後開始監聽
+├── openapi.yaml        # 這個服務的 OpenAPI 規格
 ├── Dockerfile
-├── routes/           # URL 與 controller 的對應
-├── controllers/      # 處理請求與 HTTP 回應
-├── data/             # 資料庫連線、啟動時的初始化、SQL 查詢、schema 與種子資料
-├── helpers/          # 驗證、身分驗證與共用錯誤類別
-└── middleware/       # 身分驗證與錯誤處理
+└── src/
+    ├── app.js          # Express 設定：/health、/docs、路由與錯誤處理
+    ├── routes/         # URL 與 controller 的對應
+    ├── controllers/    # 處理請求與 HTTP 回應
+    ├── data/           # 資料庫連線、啟動時的初始化、SQL 查詢、schema 與種子資料
+    ├── helpers/        # 驗證、身分驗證與共用錯誤類別
+    └── middleware/     # 身分驗證與錯誤處理
 ```
 
 請求的流向是 `route → controller → data → PostgreSQL`。每個服務模組都有獨立的 route、controller 和 query 檔案：
@@ -189,7 +193,7 @@ backend/trip-service/
 
 ## 資料來源
 
-`data/seed.sql` 裡的資料是模擬撰寫的，包含 5 位使用者、15 筆旅行、22 個景點、116 個行程天數（每趟旅行的每個日期各一天），以及 14 個已排好的行程項目。景點是手動輸入的知名地標，包含名稱、城市和類別。沒有使用外部資料集或真實個人資料。
+`src/data/seed.sql` 裡的資料是模擬撰寫的，包含 5 位使用者、15 筆旅行、22 個景點、116 個行程天數（每趟旅行的每個日期各一天），以及 14 個已排好的行程項目。景點是手動輸入的知名地標，包含名稱、城市和類別。沒有使用外部資料集或真實個人資料。
 
 ## 設計說明與限制
 

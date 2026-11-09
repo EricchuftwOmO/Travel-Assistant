@@ -1,5 +1,7 @@
 const ApiError = require('../helpers/ApiError');
 
+const { codeFor } = ApiError;
+
 const notFound = (req, res, next) => {
   next(new ApiError(404, `Route not found: ${req.method} ${req.originalUrl}`));
 };
@@ -20,7 +22,8 @@ const errorHandler = (err, req, res, next) => {
     message = 'Internal server error';
   }
 
-  res.status(status).json({ error: { status, message, details } });
+  // Same shape as the other services and the gateway: { error: { code, message, details } }
+  res.status(status).json({ error: { code: codeFor(status), message, details } });
 };
 
 module.exports = { notFound, errorHandler };
