@@ -1,7 +1,5 @@
 # Trip Service
 
-English | [繁體中文](README.zh-TW.md)
-
 The Travel Assistant service for user accounts, trips, and day-by-day itineraries. Users create an account, sign in, manage their own trips, and plan each day of a trip with an ordered list of places. The API keeps each account private: a user can only reach their own profile, trips, and itineraries.
 
 ## Key Features

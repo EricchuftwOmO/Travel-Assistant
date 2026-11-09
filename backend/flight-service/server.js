@@ -1,5 +1,3 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - flight-service
 // Starts the service: connect to PostgreSQL, prepare the table, then listen.
 
 const { connect } = require('./src/db');
@@ -22,7 +20,7 @@ async function main() {
     const app = createApp({ pool, cache, resource, hooks: undefined, serviceName: SERVICE_NAME });
     const server = app.listen(PORT, () => console.log(`${SERVICE_NAME} listening on port ${PORT}`));
 
-    // docker stop sends SIGTERM: finish open requests, then close connections
+    // On SIGTERM (docker stop), finish open requests then close connections
     const shutdown = () => server.close(async () => { await cache.close(); await pool.end(); process.exit(0); });
     process.on('SIGTERM', shutdown);
     process.on('SIGINT', shutdown);
@@ -30,5 +28,5 @@ async function main() {
 
 main().catch((err) => {
     console.error(`${SERVICE_NAME} failed to start:`, err.message);
-    process.exit(1);   // Compose restarts it (e.g. while PostgreSQL is still starting)
+    process.exit(1);  // Compose restarts it (e.g. while PostgreSQL is still starting)
 });

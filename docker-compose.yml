@@ -1,33 +1,7 @@
-# Travel Assistant: starts every service together.
-#   docker compose up --build      start (rebuilds changed images)
-#   docker compose down            stop
-#   docker compose logs -f gateway follow one service's logs
-#
-# Clients talk only to the gateway (http://localhost:8080). The other services
-# are reached inside the Compose network by service name. The new services also
-# publish a port on 127.0.0.1 (this computer only) so you can open their
-# Swagger UI at /docs; remove those "ports:" lines to keep them fully private.
-#
-# Data: one PostgreSQL server with a separate database per service (created by
-# each service on first start), and one Redis used as a GET cache by the
-# flight, hotel, car-rental and activity services (keys are prefixed per service).
-# Set GROQ_API_KEY in .env for real LLM answers; without it advice is a placeholder.
-# Set JWT_SECRET in .env to sign the trip service's login tokens.
-#
-# Adding a service: give it a folder in backend/ with its own Dockerfile and a
-# GET /health endpoint, add a block below (no "ports:"), and point the gateway's
-# matching *_SERVICE_URL at it, e.g.
-#
-#   budget-service:
-#     build: ./backend/budget-service
-#     environment:
-#       PORT: 3003
-#       DATABASE_URL: postgres://...
-#     healthcheck:
-#       test: ["CMD", "wget", "-qO-", "http://localhost:3003/health"]
-#       interval: 10s
-#       timeout: 3s
-#       retries: 3
+# Starts every service: docker compose up --build / docker compose down
+# Clients talk only to the gateway (http://localhost:8080); other services are reached by service name.
+# One PostgreSQL server (a database per service) and one Redis GET cache shared by four services.
+# Set GROQ_API_KEY for real LLM answers and JWT_SECRET to sign login tokens, in .env.
 
 services:
   gateway:

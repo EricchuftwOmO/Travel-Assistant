@@ -1,71 +1,58 @@
-# Travel Assistant backend
+# Backend
 
-Every service lives in its own folder with its own `Dockerfile`, `package.json`,
-`GET /health` and OpenAPI file. `docker compose up --build` (or `task up`) in the
-parent folder starts them all. Clients only talk to the gateway on port 8080.
+Each service has its own folder, `Dockerfile`, `package.json`, `GET /health` and `openapi.yaml`.
+`docker compose up --build` in the parent folder starts them all. Clients only talk to the gateway (port 8080).
 
 | Folder | Port | Owns | Data |
 |---|---|---|---|
-| `gateway` | 8080 | Login check (JWT), routing, CORS, request IDs, timeouts, `/api/health` | none |
-| `trip-service` | 3001 | `/api/auth`, `/api/users`, `/api/trips` (with itineraries), `/api/places` | `trip_db` |
+| `gateway` | 8080 | login check, routing, CORS, request IDs, timeouts, `/api/health` | none |
+| `trip-service` | 3001 | `/api/auth`, `/api/users`, `/api/trips`, `/api/places` | `trip_db` |
 | `flight-service` | 3004 | `/api/flights` | `flight_db` + Redis cache |
 | `hotel-service` | 3005 | `/api/hotels` | `hotel_db` + Redis cache |
 | `car-rental-service` | 3006 | `/api/car-rentals` | `car_rental_db` + Redis cache |
 | `activity-service` | 3007 | `/api/activities` | `activity_db` + Redis cache |
-| `llm-service` | 3008 | `/api/advice` (LLM travel advice) | `llm_db` |
+| `llm-service` | 3008 | `/api/advice` | `llm_db` |
 
-The gateway's `SEARCH_SERVICE_URL` points at the activity service. The budget service
-from the design is not built yet.
+The Budget service is planned, not built yet.
 
-**Trip service:** accounts (JWT login), trips, and day-by-day itineraries. It is written
-by hand rather than from the shared CRUD template, so it has its own layout and README:
-see [`trip-service/README.md`](trip-service/README.md). Most of its routes need an
-`Authorization: Bearer <token>` header from `POST /api/auth/login`.
+## Login
 
-**Login check:** the gateway verifies the token (HS256, `JWT_SECRET`) before forwarding. Public: `POST /api/auth/register`,
-`POST /api/auth/login`, `/health`, `/api/health`, and `GET` on flights, hotels, car rentals and activities.
-Everything else returns `401 UNAUTHORIZED` without a valid token. The gateway forwards the user id as `X-User-Id`
-(a client-sent one is dropped). The trip service still checks the token itself as a second layer.
+The gateway checks the bearer token (JWT, signed with `JWT_SECRET`) before forwarding.
+Public: `POST /api/auth/register`, `POST /api/auth/login`, health checks, and `GET` on flights, hotels,
+car rentals and activities. Everything else returns `401`. The gateway passes the user id on as `X-User-Id`
+and drops any `X-User-Id` a client sends. The trip service checks the token again itself.
 
 ## Docs
 
-- Gateway (everything): `gateway/openapi.yaml`
-- Each service: `<service>/openapi.yaml`, also served by the service as Swagger UI at
-  `http://localhost:<port>/docs` (the ports above are published on `127.0.0.1` for development).
+API docs are in `gateway/openapi.yaml` (everything) and each service's `openapi.yaml`, also served as
+Swagger UI at `http://localhost:<port>/docs`. The trip service has its own [README](trip-service/README.md).
 
 ## The CRUD services
 
-Flights, hotels, car rentals, activities and advice all work the same way, so the
-code is the same in each folder. Only `src/resource.js` differs: it lists the fields,
-filters and sample data, and `src/crud.js` builds the table, validation and routes from it.
+Flights, hotels, car rentals, activities and advice share the same code. Only `src/resource.js` differs
+(fields, filters, sample data); `src/crud.js` builds the table, validation and routes from it.
 
 | Request | Result |
 |---|---|
-| `GET /api/<things>` | `200 { count, total, data }`; filters, `sort`, `order`, `limit`, `offset`; `X-Total-Count`; `X-Cache: HIT/MISS` |
+| `GET /api/<things>` | `200 { count, total, data }`, with filters, `sort`, `order`, `limit`, `offset` |
 | `POST /api/<things>` | `201` + `Location` |
 | `GET /api/<things>/:id` | `200` or `404` |
-| `PUT /api/<things>/:id` | `200` full replace |
-| `PATCH /api/<things>/:id` | `200` partial update |
+| `PUT` / `PATCH /api/<things>/:id` | `200` full / partial update |
 | `DELETE /api/<things>/:id` | `204` |
 
-Errors are `{ "error": { "code", "message", "details" } }`. Validation errors (`400`) list
-every bad field in `details`.
+Errors: `{ "error": { "code", "message", "details" } }`. A `400` lists every bad field in `details`.
+`GET` responses are cached in Redis for 60 s and cleared on any write; if Redis is down, PostgreSQL is used.
 
-**Cache:** `GET` responses are kept in Redis for 60 s and cleared on any write. If Redis is
-down the services just read from PostgreSQL.
+## LLM service
 
-**LLM service:** `POST /api/advice` with a `prompt` and no `content` asks Groq for the answer
-(`GROQ_API_KEY` in `.env`; model from `LLM_MODEL`). Without a key it saves a placeholder
-(`source: "stub"`). A model failure returns `502 LLM_UNAVAILABLE`.
+- `POST /api/advice` with a `prompt` and no `content` asks Groq for the answer (`GROQ_API_KEY`, `LLM_MODEL`).
+  Without a key it saves a placeholder (`source: "stub"`). A model failure returns `502 LLM_UNAVAILABLE`.
+- `POST /api/advice/recommendations` (`src/recommend.js`) gathers flights, hotels, activities and optionally cars
+  from the other services, picks a package, adds up the cost in code, and saves the summary.
 
-## Changing a service's fields
+## Changing a service
 
-Edit `src/resource.js`, then update `openapi.yaml` to match. A new column needs a new database:
-the table is created only if it does not exist, so run `docker compose down -v` in development
-to reset the data.
-
-## Adding a service
-
-Copy a CRUD service folder, change `resource.js`, `PORT`, the name in `package.json` and
-`server.js`, add a block to `docker-compose.yml`, a `*_SERVICE_URL` and a rule in the gateway's
-`src/config.js` and `src/routes.js`, and a test case in the gateway's tests.
+Edit `src/resource.js` and `openapi.yaml`. Tables are only created if missing, so run `docker compose down -v`
+to reset data after adding a column.
+To add a service: copy a CRUD service folder, add it to `docker-compose.yml`, a `*_SERVICE_URL` and rule in the
+gateway's `src/config.js` and `src/routes.js`, and a test case.

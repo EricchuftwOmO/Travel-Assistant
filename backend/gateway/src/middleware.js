@@ -1,13 +1,9 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - API Gateway
-// Middleware: request IDs, CORS and request logging
+// Request IDs, CORS and request logging.
 
 const { randomUUID } = require('node:crypto');
 
-// A client-supplied request ID is kept only if it looks safe to log and forward
 const VALID_REQUEST_ID = /^[A-Za-z0-9._-]{1,128}$/;
 
-// Give every request an ID, return it to the client and (in proxy.js) forward it upstream
 function requestId(req, res, next) {
     const incoming = req.get('X-Request-Id');
     req.id = incoming && VALID_REQUEST_ID.test(incoming) ? incoming : randomUUID();
@@ -15,8 +11,7 @@ function requestId(req, res, next) {
     next();
 }
 
-// CORS for the frontend. The gateway is the only service the browser talks to,
-// so this is the only place CORS is configured.
+// CORS is configured only here: the gateway is the only service the browser talks to.
 function cors(allowedOrigins) {
     const allowAny = allowedOrigins.includes('*');
 
@@ -31,7 +26,6 @@ function cors(allowedOrigins) {
             if (!allowAny) res.vary('Origin');
         }
 
-        // Answer preflight requests here; they never reach a service
         if (req.method === 'OPTIONS' && req.get('Access-Control-Request-Method')) {
             res.set({
                 'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
@@ -45,7 +39,6 @@ function cors(allowedOrigins) {
     };
 }
 
-// One log line per request: id, method, path, status, service and time taken
 function requestLogger(req, res, next) {
     const start = process.hrtime.bigint();
     res.on('finish', () => {

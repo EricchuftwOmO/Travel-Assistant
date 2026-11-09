@@ -1,6 +1,4 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - PostgreSQL connection. Each service owns its own database;
-// it is created on first start if the Postgres server does not have it yet.
+// PostgreSQL connection. Creates the service's own database on first start if it is missing.
 
 const { Pool, types } = require('pg');
 
@@ -16,7 +14,6 @@ async function connect(dbName) {
         password: process.env.DB_PASSWORD || 'postgres',
     };
 
-    // Create the database if it is missing (connect to the built-in "postgres" one)
     const admin = new Pool({ ...base, database: 'postgres', max: 1 });
     try {
         const { rowCount } = await admin.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName]);

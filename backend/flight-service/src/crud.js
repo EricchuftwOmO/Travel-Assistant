@@ -1,12 +1,4 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - generic CRUD for one resource, driven by src/resource.js.
-//
-//   GET    <path>        list (filters, sort, limit/offset)     200
-//   POST   <path>        create                                 201 + Location
-//   GET    <path>/:id    read one                               200 / 404
-//   PUT    <path>/:id    replace (every writable field)         200 / 404
-//   PATCH  <path>/:id    update some fields                     200 / 404
-//   DELETE <path>/:id    delete                                 204 / 404
+// Generic CRUD routes, table and validation built from src/resource.js.
 
 const express = require('express');
 const { badRequest, notFound } = require('./errors');
@@ -19,9 +11,6 @@ const SQL_TYPES = {
 const writableNames = (resource) =>
     Object.entries(resource.fields).filter(([, def]) => !def.readOnly).map(([name]) => name);
 
-// ---------- Database setup ----------
-
-// Create the table if needed and load the sample rows the first time
 async function initTable(pool, resource) {
     const columns = Object.entries(resource.fields).map(([name, def]) => {
         let sql = `${name} ${SQL_TYPES[def.type]}`;
@@ -50,9 +39,6 @@ async function insert(pool, resource, values) {
     return (await pool.query(sql, names.map((n) => values[n]))).rows[0];
 }
 
-// ---------- Validation ----------
-
-// Check one value against its field definition. Returns [error, cleanValue].
 function checkValue(def, value) {
     switch (def.type) {
         case 'string':
@@ -80,14 +66,12 @@ function checkValue(def, value) {
         case 'enum':
             return def.values.includes(value) ? [null, value] : [`must be one of: ${def.values.join(', ')}`];
     }
-    // integer / number range checks
     if (def.min !== undefined && value < def.min) return [`must be at least ${def.min}`];
     if (def.max !== undefined && value > def.max) return [`must be at most ${def.max}`];
     return [null, value];
 }
 
-// Validate a request body. mode: 'create' | 'replace' | 'patch'.
-// Returns { values } (columns to write) or throws 400 listing every problem.
+// Returns { values } to write, or throws 400 listing every problem.
 function validateBody(resource, body, mode) {
     if (body === null || typeof body !== 'object' || Array.isArray(body)) {
         throw badRequest('Request body must be a JSON object');
@@ -123,8 +107,6 @@ function validateBody(resource, body, mode) {
     return values;
 }
 
-// ---------- Query parameters ----------
-
 function parseId(raw) {
     const id = Number(raw);
     if (!Number.isInteger(id) || id < 1) throw badRequest("Path parameter 'id' must be a positive integer");
@@ -138,7 +120,6 @@ function parseIntQuery(query, name, { min, max, fallback }) {
     return n;
 }
 
-// Turn the resource's filters + the request's query string into a WHERE clause
 function buildWhere(resource, query) {
     const clauses = [];
     const params = [];
@@ -175,14 +156,11 @@ function buildWhere(resource, query) {
     return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params };
 }
 
-// ---------- Router ----------
-
 // hooks.beforeCreate(values) may be async and may add or change values
 function createCrudRouter(resource, pool, cache, hooks = {}) {
     const router = express.Router();
     const sortable = ['id', ...(resource.sortable || [])];
 
-    // GET responses are cached; any write clears the cache
     const cached = (handler) => async (req, res) => {
         const hit = await cache.get(req.originalUrl);
         if (hit) {

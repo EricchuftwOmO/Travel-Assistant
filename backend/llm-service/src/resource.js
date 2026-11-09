@@ -1,7 +1,4 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - LLM Service: the travel advice resource (fields, filters, sample data).
-// POST /api/advice writes the "content" with an LLM when the caller leaves it out
-// (see llm.js). crud.js builds the table, validation and routes from this definition.
+// The travel advice resource. POST /api/advice fills "content" with an LLM when it is omitted (see llm.js).
 
 const TOPICS = ['general', 'packing', 'food', 'safety', 'budget', 'itinerary'];
 

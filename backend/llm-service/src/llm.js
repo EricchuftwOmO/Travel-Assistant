@@ -1,7 +1,4 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - LLM Service: asks the language model (Groq) for travel advice.
-// Without GROQ_API_KEY the service stores a placeholder answer instead, so the
-// rest of the app keeps working in development and in tests.
+// Asks the language model (Groq) for advice. Without GROQ_API_KEY a placeholder answer is stored.
 
 const Groq = require('groq-sdk');
 const { HttpError } = require('./errors');
@@ -42,11 +39,10 @@ async function generateAdvice({ topic, prompt }) {
     }
 }
 
-// crud.js calls this before saving a new advice record
 const hooks = {
     async beforeCreate(values) {
         if (values.content) {
-            Object.assign(values, { model: 'user', source: 'user' });   // caller wrote it themselves
+            Object.assign(values, { model: 'user', source: 'user' });
         } else {
             Object.assign(values, await generateAdvice({ topic: values.topic || 'general', prompt: values.prompt }));
         }

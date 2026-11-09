@@ -1,10 +1,5 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - optional Redis cache for GET responses.
-// If REDIS_URL is not set, or Redis is down, every call quietly does nothing and
-// the service reads from PostgreSQL as usual: the cache can never break a request.
-//
-// Invalidation: all keys carry a version number; a write bumps it, which makes
-// every older cached response unreachable (they expire on their own).
+// Optional Redis cache for GET responses. Without Redis every call does nothing, so it never breaks a request.
+// A write bumps a version number kept in every key, which makes older cached entries unreachable.
 
 const { createClient } = require('redis');
 

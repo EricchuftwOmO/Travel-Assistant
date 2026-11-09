@@ -1,8 +1,6 @@
 # Travel Assistant: architecture (current state)
 
-Diagrams are [Mermaid](https://mermaid.js.org/), so they render on GitHub and in most Markdown
-viewers. Solid boxes exist today. **Dashed boxes are in the plan but not built yet**
-(Budget).
+Diagrams are [Mermaid](https://mermaid.js.org/) and render on GitHub. Dashed boxes are planned, not built.
 
 ## 1. Services
 
@@ -64,17 +62,14 @@ flowchart TB
     groq["GROQ API<br/>(language model)"]
     llm -->|"if GROQ_API_KEY is set"| groq
 
-    %% Planned: the LLM service is the AI component. It calls the search services directly
-    %% (not through the gateway) to gather options for a recommendation summary.
-    %% Planned: live flight and hotel results come from SerpApi (Google Flights / Google Hotels).
     serpapi["SERPAPI<br/>(external, planned)"]:::planned
     flight -.->|"planned: live results"| serpapi
     hotel -.->|"planned: live results"| serpapi
 
-    llm -.->|"planned: gathers options"| flight
-    llm -.-> hotel
-    llm -.-> car
-    llm -.-> activity
+    llm -->|"recommendations"| flight
+    llm --> hotel
+    llm --> car
+    llm --> activity
 
     classDef planned stroke-dasharray: 5 5,fill:#f4f4f4,color:#666
 ```
@@ -82,11 +77,9 @@ flowchart TB
 Dotted arrows to Redis mean the cache is optional: if Redis is down, the services read
 from PostgreSQL instead.
 
-**The AI component is the LLM service.** Today it saves advice and, when asked, has Groq write
-it. In Phase III it will also build a recommendation summary: it calls the Flight, Hotel, Car
-Rental and Activity services directly (the dotted arrows from `llm`), lets the model choose
-among the results, adds up the cost in code, and saves the result in `llm_db`. There is no
-separate agent calling the gateway.
+**The AI component is the LLM service.** It saves advice and, when asked, has Groq write it. For a
+recommendation it calls the Flight, Hotel, Car Rental and Activity services directly (not through the
+gateway), lets the model choose among the results, adds up the cost in code, and saves the result in `llm_db`.
 
 ## 2. Containers and ports
 
@@ -292,5 +285,4 @@ Travel-Assistant/
                                   openapi.yaml, Dockerfile, package.json
 ```
 
-API reference: `backend/gateway/openapi.yaml` (everything) and each service's own
-`openapi.yaml` / Swagger UI at `http://localhost:<port>/docs`.
+API reference: `backend/gateway/openapi.yaml` and each service's Swagger UI at `http://localhost:<port>/docs`.

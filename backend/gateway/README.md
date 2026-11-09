@@ -1,103 +1,71 @@
 # API Gateway
 
-The single entry point for the Travel Assistant frontend. It forwards every `/api/*`
-request to the service that owns it and adds the cross-cutting pieces from the
-Phase II design: CORS, `X-Request-Id` tracing, timeouts, uniform errors and a
-combined health check. It has no business logic and no database access.
+The single entry point for clients. It checks the login token, forwards each `/api/*` request to the service
+that owns it, and adds CORS, `X-Request-Id`, timeouts and uniform errors. It has no database and no business logic.
 
 ## Routing
 
-The first matching rule wins:
+The first matching rule wins (`src/routes.js`). Paths, queries, methods and bodies are forwarded unchanged.
 
-| Path | Service | Default URL | Timeout |
-|---|---|---|---|
-| `/api/trips/:tripId/budget` | Budget | `http://localhost:3003` | 5 s |
-| `/api/trips`, `/api/trips/*` | Trip | `http://localhost:3001` | 5 s |
-| `/api/auth/*`, `/api/users/*`, `/api/places` | Trip (accounts and places catalog) | `http://localhost:3001` | 5 s |
-| `/api/activities/*` | Activity (`SEARCH_SERVICE_URL`) | `http://localhost:3007` | 5 s |
-| `/api/budget/*` | Budget | `http://localhost:3003` | 5 s |
-| `/api/flights/*` | Flight | `http://localhost:3004` | 5 s |
-| `/api/hotels/*` | Hotel | `http://localhost:3005` | 5 s |
-| `/api/car-rentals/*` | Car Rental | `http://localhost:3006` | 5 s |
-| `/api/advice/*` | LLM (travel advice) | `http://localhost:3008` | 40 s |
-| `/api/planner/*` | AI Planner (stretch) | not set, so not routed | 60 s |
+| Path | Service | Timeout |
+|---|---|---|
+| `/api/trips/:id/budget`, `/api/budget/*` | Budget (planned) | 5 s |
+| `/api/trips/*`, `/api/auth/*`, `/api/users/*`, `/api/places` | Trip | 5 s |
+| `/api/activities/*` | Activity | 5 s |
+| `/api/flights/*` | Flight | 5 s |
+| `/api/hotels/*` | Hotel | 5 s |
+| `/api/car-rentals/*` | Car Rental | 5 s |
+| `/api/advice/*` | LLM | 40 s |
+| `/api/planner/*` | AI Planner (not routed unless a URL is set) | 60 s |
 
-Forwarding uses [`http-proxy-middleware`](https://github.com/chimurai/http-proxy-middleware)
-with keep-alive connections to each service. Paths, query strings, methods, headers and
-bodies are forwarded unchanged. Bodies are streamed, not parsed. Each service therefore defines its routes with the full `/api/...` path.
+## Login check (`src/auth.js`)
 
-## What the gateway adds
+Verifies the bearer JWT (HS256, `JWT_SECRET`, expiry). Public without a token: `POST /api/auth/register`,
+`POST /api/auth/login`, `/health`, `/api/health`, and `GET` on flights, hotels, car rentals and activities.
+Anything else without a valid token gets `401 UNAUTHORIZED`. The user id is forwarded as `X-User-Id`;
+a client-sent `X-User-Id` is removed.
 
-- **`X-Request-Id`**: a valid ID from the client is kept; otherwise a UUID is created.
-  It is sent to the service and returned to the client, and it appears in the logs.
-- **`X-Forwarded-For` / `-Host` / `-Proto`**: the original client details, for the services.
-- **CORS**: only for origins in `CORS_ORIGINS`. Preflight `OPTIONS` requests are answered by
-  the gateway and never reach a service.
-- **Errors** in the shared format `{ "error": { "code", "message" } }`:
+## Other behavior
+
+- **`X-Request-Id`**: a valid client value is kept, otherwise a UUID is made. It goes to the service, the response and the logs.
+- **CORS**: only for `CORS_ORIGINS`. Preflight requests are answered by the gateway.
+- **Errors** are `{ "error": { "code", "message" } }`. Errors from a service pass through unchanged.
 
 | Status | Code | When |
 |---|---|---|
-| 404 | `NOT_FOUND` | No service owns the path |
-| 502 | `UPSTREAM_UNAVAILABLE` | The service is down or refused the connection |
-| 504 | `UPSTREAM_TIMEOUT` | The service sent nothing for the whole timeout (5 s, or 60 s for the planner) |
-| 500 | `INTERNAL_ERROR` | Unexpected gateway error (no stack trace returned) |
+| 401 | `UNAUTHORIZED` | missing or invalid token |
+| 404 | `NOT_FOUND` | no service owns the path |
+| 502 | `UPSTREAM_UNAVAILABLE` | service is down |
+| 504 | `UPSTREAM_TIMEOUT` | service did not answer in time |
+| 500 | `INTERNAL_ERROR` | unexpected gateway error |
 
-  Errors returned by a service (400, 404, 422, …) are passed through unchanged.
+## Health
 
-## Health checks
+- `GET /health`: the gateway's own check (used by Docker).
+- `GET /api/health`: calls `/health` on every configured service. `200 "ok"` if all are up, otherwise `503 "degraded"`
+  with the status of each.
 
-- `GET /health`: the gateway's own liveness check, used by the Docker `HEALTHCHECK`.
-- `GET /api/health`: calls `SERVICE_HEALTH_PATH` (default `/health`) on every configured
-  service. It returns **200** `status: "ok"` if all are up, otherwise **503** `status: "degraded"`
-  with the state of each service:
+## Run
 
-```json
-{
-  "status": "degraded",
-  "services": {
-    "trip":   { "status": "up", "httpStatus": 200, "latencyMs": 4 },
-    "search": { "status": "down", "reason": "unreachable", "latencyMs": 1 },
-    "budget": { "status": "up", "httpStatus": 200, "latencyMs": 3 }
-  }
-}
-```
-
-**Every service must serve `GET /health`** (200 when healthy) for this check to work.
-
-## Running
-
-```bash
+```sh
 cd backend/gateway
 npm install
-cp .env.example .env     # optional; the defaults work for local runs
-npm start                # or: npm run dev (restarts when files change)
-npm test
+npm start        # defaults work locally; see .env.example
+npm test         # 15 tests with stub services
 ```
 
-With Docker:
-
-```bash
-docker build -t ta-gateway backend/gateway
-docker run --rm -p 8080:8080 \
-  -e TRIP_SERVICE_URL=http://host.docker.internal:3001 ta-gateway
-```
-
-In `docker-compose.yml` the gateway is the only service with a published port. Set each
-`*_SERVICE_URL` to the Compose service name, for example `http://trip-service:3001`.
-
-## Configuration
-
-See [`.env.example`](.env.example) for every variable and its default.
+In `docker-compose.yml` the gateway is the only service with a public port.
 
 ## Layout
 
 ```
-server.js           entry point: loads config, starts the server
-src/config.js       environment variables and defaults
-src/routes.js       route table (which service owns which path)
-src/proxy.js        one http-proxy-middleware proxy per route; 502/504 errors
-src/middleware.js   request IDs, CORS, request logging
+server.js           starts the server
+src/config.js       environment variables
+src/routes.js       route table
+src/auth.js         login check
+src/proxy.js        proxy per route, 502/504 errors
+src/middleware.js   request IDs, CORS, logging
 src/health.js       combined health check
-src/errors.js       uniform JSON errors
-test/               tests using stub services (node:test, no extra dependencies)
+src/errors.js       JSON errors
+test/               node:test tests
 ```

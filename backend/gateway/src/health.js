@@ -1,8 +1,5 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - API Gateway
-// Combined health check: asks every configured service for its own health
+// Combined health check of every configured service.
 
-// Check one service; never throws
 async function checkService(name, url, healthPath, timeoutMs) {
     const start = Date.now();
     try {
@@ -21,7 +18,6 @@ async function checkService(name, url, healthPath, timeoutMs) {
     }
 }
 
-// GET /api/health -> 200 if every service is up, 503 if any is down
 function healthHandler(config) {
     return async function health(req, res) {
         const services = Object.entries(config.services).filter(([, service]) => service.url);

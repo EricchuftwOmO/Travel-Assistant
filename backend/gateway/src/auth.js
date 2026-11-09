@@ -1,12 +1,8 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - API Gateway
-// Login check: the gateway verifies the JWT (HS256, signed by the trip service
-// with the shared JWT_SECRET) before a request reaches any service.
+// Verifies the JWT (HS256, signed with the shared JWT_SECRET) before a request reaches any service.
 
 const { createHmac, timingSafeEqual } = require('node:crypto');
 const { sendError } = require('./errors');
 
-// Reachable without a token. Everything else under /api needs one.
 const PUBLIC_RULES = [
     { methods: ['POST'], pattern: /^\/api\/auth\/(register|login)\/?$/ },
     { methods: ['GET', 'HEAD'], pattern: /^\/api\/(flights|hotels|car-rentals|activities)(\/|$)/ },
@@ -18,7 +14,6 @@ function isPublic(method, path) {
 
 const b64 = (s) => Buffer.from(s, 'base64url');
 
-// Returns the token payload, or null if it is malformed, badly signed or expired
 function verifyJwt(token, secret, now = Date.now()) {
     const parts = token.split('.');
     if (parts.length !== 3) return null;
