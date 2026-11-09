@@ -9,6 +9,54 @@
       "name": "0. Health",
       "item": [
         {
+          "name": "Sign in (token for the rest of the run)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('token', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"Password123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
           "name": "Gateway liveness",
           "event": [
             {
@@ -904,6 +952,9 @@
           "request": {
             "method": "GET",
             "header": [],
+            "auth": {
+              "type": "noauth"
+            },
             "url": {
               "raw": "{{baseUrl}}/api/trips",
               "host": [
@@ -926,7 +977,7 @@
                 "exec": [
                   "pm.test('Status is 200', () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
-                  "pm.test('returns the signed-in user's trips only', () => { const list = Array.isArray(body) ? body : body.data; pm.expect(list).to.be.an('array').that.is.not.empty; list.forEach((t) => pm.expect(t.ownerId).to.eql(1)); });"
+                  "pm.test('returns the trips of the signed-in user only', () => { const list = Array.isArray(body) ? body : body.data; pm.expect(list).to.be.an('array').that.is.not.empty; list.forEach((t) => pm.expect(t.ownerId).to.eql(1)); });"
                 ]
               }
             }
@@ -1599,6 +1650,16 @@
       ]
     }
   ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
   "variable": [
     {
       "key": "baseUrl",

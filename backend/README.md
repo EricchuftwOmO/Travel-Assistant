@@ -6,7 +6,7 @@ parent folder starts them all. Clients only talk to the gateway on port 8080.
 
 | Folder | Port | Owns | Data |
 |---|---|---|---|
-| `gateway` | 8080 | Routing, CORS, request IDs, timeouts, `/api/health` | none |
+| `gateway` | 8080 | Login check (JWT), routing, CORS, request IDs, timeouts, `/api/health` | none |
 | `trip-service` | 3001 | `/api/auth`, `/api/users`, `/api/trips` (with itineraries), `/api/places` | `trip_db` |
 | `flight-service` | 3004 | `/api/flights` | `flight_db` + Redis cache |
 | `hotel-service` | 3005 | `/api/hotels` | `hotel_db` + Redis cache |
@@ -21,6 +21,11 @@ from the design is not built yet.
 by hand rather than from the shared CRUD template, so it has its own layout and README:
 see [`trip-service/README.md`](trip-service/README.md). Most of its routes need an
 `Authorization: Bearer <token>` header from `POST /api/auth/login`.
+
+**Login check:** the gateway verifies the token (HS256, `JWT_SECRET`) before forwarding. Public: `POST /api/auth/register`,
+`POST /api/auth/login`, `/health`, `/api/health`, and `GET` on flights, hotels, car rentals and activities.
+Everything else returns `401 UNAUTHORIZED` without a valid token. The gateway forwards the user id as `X-User-Id`
+(a client-sent one is dropped). The trip service still checks the token itself as a second layer.
 
 ## Docs
 

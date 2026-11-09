@@ -9,7 +9,7 @@ viewers. Solid boxes exist today. **Dashed boxes are in the plan but not built y
 ```mermaid
 flowchart TB
     client["CLIENT<br/>(React app, later)"]
-    gateway["API GATEWAY :8080<br/>routing · CORS · X-Request-Id · timeouts · /api/health"]
+    gateway["API GATEWAY :8080<br/>login check (JWT) · routing · CORS · X-Request-Id · timeouts · /api/health"]
 
     client --> gateway
 

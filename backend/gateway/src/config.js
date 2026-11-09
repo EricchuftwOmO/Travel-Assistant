@@ -24,6 +24,9 @@ function loadConfig() {
         healthPath: process.env.SERVICE_HEALTH_PATH || '/health',
         healthTimeoutMs: intFromEnv('HEALTH_TIMEOUT_MS', 2000),
 
+        // Shared with the trip service, which signs the tokens
+        jwtSecret: process.env.JWT_SECRET || 'dev-only-change-me',
+
         logRequests: process.env.LOG_REQUESTS !== 'false',
 
         // Services behind the gateway. A service with no URL is not routed
