@@ -12,7 +12,7 @@ Run these from the project root (`code/` in the submission zip).
 # 1. (optional) configuration. Without a .env file everything still starts.
 cp .env.example .env            # set GROQ_API_KEY to use the real language model
 
-# 2. build every image and start everything (gateway, 5 services, PostgreSQL, Redis)
+# 2. build every image and start everything (gateway, 6 services, PostgreSQL, Redis)
 docker compose up --build -d
 
 # 3. check it
@@ -38,7 +38,7 @@ docker run --rm -p 3004:3004 -e DB_HOST=host.docker.internal travel-assistant/fl
 | Service | Port | Reachable from |
 |---|---|---|
 | gateway | 8080 | everywhere (this is the only port clients use) |
-| flight / hotel / car-rental / activity / llm service | 3004 / 3005 / 3006 / 3007 / 3008 | this computer only (`127.0.0.1`), for Swagger UI at `/docs` |
+| trip / flight / hotel / car-rental / activity / llm service | 3001 / 3004 / 3005 / 3006 / 3007 / 3008 | this computer only (`127.0.0.1`), for Swagger UI at `/docs` |
 | postgres, redis | 5432, 6379 | inside the Docker network only |
 
 Ports come from environment variables (`PORT`), so a hosting platform can set its own.
@@ -49,9 +49,11 @@ No secret is stored in an image, in `docker-compose.yml` or in git. Real values 
 
 | Variable | Used by | Default | Purpose |
 |---|---|---|---|
-| `PORT` | every service | 8080 gateway, 3004 to 3008 services | listen port |
-| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` | the five services | `postgres`, 5432, `postgres`, `postgres` | PostgreSQL connection (Compose sets `DB_HOST`) |
-| `DB_NAME` | the five services | `flight_db`, `hotel_db`, `car_rental_db`, `activity_db`, `llm_db` | each service's own database (created on first start) |
+| `PORT` | every service | 8080 gateway, 3001 trip service, 3004 to 3008 other services | listen port |
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` | flight, hotel, car-rental, activity, llm | `postgres`, 5432, `postgres`, `postgres` | PostgreSQL connection (Compose sets `DB_HOST`) |
+| `DB_NAME` | the same five services | `flight_db`, `hotel_db`, `car_rental_db`, `activity_db`, `llm_db` | each service's own database (created on first start) |
+| `DATABASE_URL` | trip-service | `postgres://postgres:postgres@postgres:5432/trip_db` | the trip service's connection string (database created on first start) |
+| `JWT_SECRET` | trip-service | development-only default | signs login tokens; **set a long random value** in `.env` / the host's secret store |
 | `REDIS_URL` | flight, hotel, car-rental, activity | `redis://redis:6379` | GET cache; leave empty to run without a cache |
 | `CACHE_TTL_SECONDS` | same | 60 | cache lifetime |
 | `GROQ_API_KEY` | llm-service | empty | language model key. **Empty = placeholder answers** (`source: "stub"`), everything else works |
@@ -71,10 +73,10 @@ private network. That matches this project: one Dockerfile per service.
 
 1. Push the repository to GitHub and connect it to Render.
 2. Create a **PostgreSQL** instance and a **Key Value** (Redis) instance in the same region.
-3. For each of `flight-service`, `hotel-service`, `car-rental-service`, `activity-service`, `llm-service`
+3. For each of `trip-service`, `flight-service`, `hotel-service`, `car-rental-service`, `activity-service`, `llm-service`
    create a **Private Service** with *Runtime: Docker*, *Dockerfile path* `backend/<service>/Dockerfile`
    and *Root directory* `backend/<service>`. Set the variables above (`DB_HOST`, `DB_USER`, `DB_PASSWORD`
-   from the PostgreSQL instance, `REDIS_URL` from the Key Value instance, `GROQ_API_KEY` as a secret).
+   from the PostgreSQL instance (the trip service takes `DATABASE_URL` and `JWT_SECRET` instead), `REDIS_URL` from the Key Value instance, `GROQ_API_KEY` as a secret).
 4. Create the **gateway** as a **Web Service** (the only public one, Dockerfile `backend/gateway/Dockerfile`)
    and point each `*_SERVICE_URL` at the matching private service's internal address and port.
 5. The platform's health check path is `/health`, which every service already serves.
@@ -84,7 +86,7 @@ private network. That matches this project: one Dockerfile per service.
 **Known work for the real deployment (Phase III):**
 - Render sets its own `PORT`; the services read `PORT`, but the gateway's `*_SERVICE_URL` values must use
   whatever port each private service ends up on.
-- Each service currently runs `CREATE DATABASE` on its first start. On a managed PostgreSQL the database
+- Each service (trip service included) currently runs `CREATE DATABASE` on its first start. On a managed PostgreSQL the database
   user may not be allowed to do that, so the Phase III change is to create the five databases in the
   dashboard and add a setting that skips the create step.
 - Deployed URL and a sample request will be added here once the deployment exists.

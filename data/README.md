@@ -5,6 +5,7 @@ Each service owns one PostgreSQL database. The files here are exports (`pg_dump`
 
 | File | Database | Service | Rows | What it exercises |
 |---|---|---|---|---|
+| `trip_db.sql` | `trip_db` | Trip Service | users, trips, places, itineraries and items | seeded accounts (`alice@example.com`, password `Password123!`), trips with one itinerary day per date, a places catalog by city and category |
 | `flight_db.sql` | `flight_db` | Flight Service | 6 | SEA to HND/ICN/TPE and LAX/SFO to SEA; prices $119 to $912; two flights on one route (sorting by price) |
 | `hotel_db.sql` | `hotel_db` | Hotel Service | 6 | Tokyo, Seattle, Taipei; 2 to 5 stars; **one unavailable hotel** (`available=false` filter) |
 | `car_rental_db.sql` | `car_rental_db` | Car Rental Service | 6 | economy to luxury; **one unavailable car** |
@@ -22,7 +23,7 @@ To load the exports by hand (for example into an empty database):
 
 ```sh
 docker compose up -d postgres
-sh data/load-all.sh                      # all five
+sh data/load-all.sh                      # all six
 # or one database:
 docker compose exec -T postgres psql -U postgres -c "CREATE DATABASE flight_db"
 docker compose exec -T postgres psql -U postgres -d flight_db < data/flight_db.sql
