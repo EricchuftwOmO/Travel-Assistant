@@ -2078,7 +2078,7 @@ paths:
         - Planned
       summary: Who owes whom for a trip (planned)
       operationId: getSettlements
-      description: PLANNED (Phase III, Travel service). For each currency, work out every member's balance (paid
+      description: PLANNED (Phase III, not implemented yet). For each currency, work out every member's balance (paid
         minus owed) and the smallest set of payments that settles everyone.
       parameters:
         - name: tripId
