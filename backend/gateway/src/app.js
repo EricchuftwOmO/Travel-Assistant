@@ -6,6 +6,7 @@ const express = require('express');
 const { requestId, cors, requestLogger } = require('./middleware');
 const { buildRouteTable, matchRoute } = require('./routes');
 const { createProxy } = require('./proxy');
+const { requireLogin } = require('./auth');
 const { healthHandler } = require('./health');
 const { notFound, errorHandler } = require('./errors');
 
@@ -24,6 +25,9 @@ function createApp(config) {
 
     // Combined health check of all services
     app.get('/api/health', healthHandler(config));
+
+    // Login check for every /api route that is not public (see auth.js)
+    app.use(requireLogin(config.jwtSecret));
 
     // Forward /api/* to the owning service. No body parser: bodies are streamed as-is.
     // Not mounted with app.use('/api', ...), because that would strip "/api" from

@@ -53,7 +53,7 @@ No secret is stored in an image, in `docker-compose.yml` or in git. Real values 
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` | flight, hotel, car-rental, activity, llm | `postgres`, 5432, `postgres`, `postgres` | PostgreSQL connection (Compose sets `DB_HOST`) |
 | `DB_NAME` | the same five services | `flight_db`, `hotel_db`, `car_rental_db`, `activity_db`, `llm_db` | each service's own database (created on first start) |
 | `DATABASE_URL` | trip-service | `postgres://postgres:postgres@postgres:5432/trip_db` | the trip service's connection string (database created on first start) |
-| `JWT_SECRET` | trip-service | development-only default | signs login tokens; **set a long random value** in `.env` / the host's secret store |
+| `JWT_SECRET` | trip-service, gateway | development-only default | signs login tokens (trip service) and is checked on every request (gateway), so both must have the same value; **set a long random value** in `.env` / the host's secret store |
 | `REDIS_URL` | flight, hotel, car-rental, activity | `redis://redis:6379` | GET cache; leave empty to run without a cache |
 | `CACHE_TTL_SECONDS` | same | 60 | cache lifetime |
 | `GROQ_API_KEY` | llm-service | empty | language model key. **Empty = placeholder answers** (`source: "stub"`), everything else works |

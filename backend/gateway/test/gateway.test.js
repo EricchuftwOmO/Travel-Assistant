@@ -5,7 +5,24 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const { createHmac } = require('node:crypto');
 const { createApp } = require('../src/app');
+
+const SECRET = 'test-secret';
+
+// Sign an HS256 token like the trip service does
+function makeToken(payload, secret = SECRET) {
+    const enc = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const head = `${enc({ alg: 'HS256', typ: 'JWT' })}.${enc(payload)}`;
+    return `${head}.${createHmac('sha256', secret).update(head).digest('base64url')}`;
+}
+const goodToken = makeToken({ userId: 7, exp: Math.floor(Date.now() / 1000) + 3600 });
+
+// Most tests are about routing, so they send a valid token by default
+const rawFetch = fetch;
+const fetchAs = (url, opts = {}) =>
+    rawFetch(url, { ...opts, headers: { Authorization: `Bearer ${goodToken}`, ...opts.headers } });
+
 
 const servers = [];
 
@@ -52,6 +69,7 @@ before(async () => {
         healthPath: '/health',
         healthTimeoutMs: 500,
         logRequests: false,
+        jwtSecret: SECRET,
         services: {
             trip: { url: await echoService('trip'), timeoutMs: 1000 },
             search: { url: await echoService('search'), timeoutMs: 1000 },
@@ -92,7 +110,7 @@ test('routes each path to the owning service', async () => {
         ['/api/advice?userId=u1', 'llm'],
     ];
     for (const [path, service] of cases) {
-        const res = await fetch(gateway + path);
+        const res = await fetchAs(gateway + path);
         assert.equal(res.status, 200, path);
         const body = await res.json();
         assert.equal(body.service, service, path);
@@ -102,7 +120,7 @@ test('routes each path to the owning service', async () => {
 
 test('forwards method and body unchanged', async () => {
     const payload = JSON.stringify({ activityId: 3, day: 1 });
-    const res = await fetch(`${gateway}/api/trips/1/items`, {
+    const res = await fetchAs(`${gateway}/api/trips/1/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: payload,
@@ -114,7 +132,7 @@ test('forwards method and body unchanged', async () => {
 });
 
 test('adds a request ID and forwards it to the service', async () => {
-    const res = await fetch(`${gateway}/api/trips`);
+    const res = await fetchAs(`${gateway}/api/trips`);
     const id = res.headers.get('x-request-id');
     assert.match(id, /^[0-9a-f-]{36}$/);
     const body = await res.json();
@@ -122,7 +140,7 @@ test('adds a request ID and forwards it to the service', async () => {
 });
 
 test('sends the service its own Host and the client details in X-Forwarded-*', async () => {
-    const res = await fetch(`${gateway}/api/trips`);
+    const res = await fetchAs(`${gateway}/api/trips`);
     const body = await res.json();
     const gatewayHost = new URL(gateway).host;
     assert.notEqual(body.headers.host, gatewayHost);
@@ -132,33 +150,33 @@ test('sends the service its own Host and the client details in X-Forwarded-*', a
 });
 
 test('keeps a valid client request ID and replaces an invalid one', async () => {
-    let res = await fetch(`${gateway}/api/trips`, { headers: { 'X-Request-Id': 'abc-123' } });
+    let res = await fetchAs(`${gateway}/api/trips`, { headers: { 'X-Request-Id': 'abc-123' } });
     assert.equal(res.headers.get('x-request-id'), 'abc-123');
 
-    res = await fetch(`${gateway}/api/trips`, { headers: { 'X-Request-Id': 'bad id with spaces' } });
+    res = await fetchAs(`${gateway}/api/trips`, { headers: { 'X-Request-Id': 'bad id with spaces' } });
     assert.notEqual(res.headers.get('x-request-id'), 'bad id with spaces');
 });
 
 test('unknown path returns 404 NOT_FOUND', async () => {
-    const res = await fetch(`${gateway}/api/nope`);
+    const res = await fetchAs(`${gateway}/api/nope`);
     assert.equal(res.status, 404);
     assert.equal((await res.json()).error.code, 'NOT_FOUND');
 });
 
 test('service that does not answer returns 504 UPSTREAM_TIMEOUT', async () => {
-    const res = await fetch(`${gateway}/api/planner/proposals`, { method: 'POST' });
+    const res = await fetchAs(`${gateway}/api/planner/proposals`, { method: 'POST' });
     assert.equal(res.status, 504);
     assert.equal((await res.json()).error.code, 'UPSTREAM_TIMEOUT');
 });
 
 test('service that is down returns 502 UPSTREAM_UNAVAILABLE', async () => {
     const config = {
-        corsOrigins: [], healthPath: '/health', healthTimeoutMs: 500, logRequests: false,
+        corsOrigins: [], jwtSecret: SECRET, healthPath: '/health', healthTimeoutMs: 500, logRequests: false,
         services: { trip: { url: await deadUrl(), timeoutMs: 1000 } },
     };
     const downGateway = await listen(createApp(config));
 
-    const res = await fetch(`${downGateway}/api/trips`);
+    const res = await fetchAs(`${downGateway}/api/trips`);
     assert.equal(res.status, 502);
     const body = await res.json();
     assert.equal(body.error.code, 'UPSTREAM_UNAVAILABLE');
@@ -167,23 +185,23 @@ test('service that is down returns 502 UPSTREAM_UNAVAILABLE', async () => {
 
 test('unconfigured planner is not routed', async () => {
     const config = {
-        corsOrigins: [], healthPath: '/health', healthTimeoutMs: 500, logRequests: false,
+        corsOrigins: [], jwtSecret: SECRET, healthPath: '/health', healthTimeoutMs: 500, logRequests: false,
         services: { planner: { url: '', timeoutMs: 1000 } },
     };
     const noPlanner = await listen(createApp(config));
-    const res = await fetch(`${noPlanner}/api/planner/proposals`, { method: 'POST' });
+    const res = await fetchAs(`${noPlanner}/api/planner/proposals`, { method: 'POST' });
     assert.equal(res.status, 404);
 });
 
 test('CORS: allowed origin gets headers, preflight answered by the gateway', async () => {
-    let res = await fetch(`${gateway}/api/trips`, { headers: { Origin: 'http://localhost:5173' } });
+    let res = await fetchAs(`${gateway}/api/trips`, { headers: { Origin: 'http://localhost:5173' } });
     assert.equal(res.headers.get('access-control-allow-origin'), 'http://localhost:5173');
     assert.match(res.headers.get('access-control-expose-headers'), /X-Total-Count/);
 
-    res = await fetch(`${gateway}/api/trips`, { headers: { Origin: 'http://evil.example' } });
+    res = await fetchAs(`${gateway}/api/trips`, { headers: { Origin: 'http://evil.example' } });
     assert.equal(res.headers.get('access-control-allow-origin'), null);
 
-    res = await fetch(`${gateway}/api/trips`, {
+    res = await fetchAs(`${gateway}/api/trips`, {
         method: 'OPTIONS',
         headers: { Origin: 'http://localhost:5173', 'Access-Control-Request-Method': 'POST' },
     });
@@ -193,7 +211,7 @@ test('CORS: allowed origin gets headers, preflight answered by the gateway', asy
 
 test('combined health check reports each service', async () => {
     // The stub planner never answers, so the gateway reports "degraded"
-    const res = await fetch(`${gateway}/api/health`);
+    const res = await fetchAs(`${gateway}/api/health`);
     assert.equal(res.status, 503);
     const body = await res.json();
     assert.equal(body.status, 'degraded');
@@ -203,6 +221,46 @@ test('combined health check reports each service', async () => {
 });
 
 test('gateway liveness check', async () => {
-    const res = await fetch(`${gateway}/health`);
+    const res = await fetchAs(`${gateway}/health`);
     assert.equal(res.status, 200);
+});
+
+test('login check: protected routes need a valid token', async () => {
+    const noToken = await rawFetch(`${gateway}/api/trips`);
+    assert.equal(noToken.status, 401);
+    assert.equal(noToken.headers.get('www-authenticate'), 'Bearer');
+    assert.equal((await noToken.json()).error.code, 'UNAUTHORIZED');
+
+    const bad = [
+        makeToken({ userId: 7, exp: Math.floor(Date.now() / 1000) + 3600 }, 'wrong-secret'),
+        makeToken({ userId: 7, exp: Math.floor(Date.now() / 1000) - 10 }),
+        makeToken({ userId: 7 }),
+        'not.a.jwt',
+    ];
+    for (const token of bad) {
+        const res = await rawFetch(`${gateway}/api/advice`, { headers: { Authorization: `Bearer ${token}` } });
+        assert.equal(res.status, 401, token);
+    }
+});
+
+test('login check: public routes need no token', async () => {
+    for (const [method, path, service] of [
+        ['POST', '/api/auth/login', 'trip'],
+        ['POST', '/api/auth/register', 'trip'],
+        ['GET', '/api/flights?origin=SEA', 'flight'],
+        ['GET', '/api/hotels', 'hotel'],
+    ]) {
+        const res = await rawFetch(gateway + path, { method });
+        assert.equal(res.status, 200, path);
+        assert.equal((await res.json()).service, service);
+    }
+    // writes to the catalogs are not public
+    assert.equal((await rawFetch(`${gateway}/api/flights`, { method: 'POST' })).status, 401);
+});
+
+test('login check: the gateway sets X-User-Id and drops a forged one', async () => {
+    const res = await fetchAs(`${gateway}/api/trips`, { headers: { 'X-User-Id': '999' } });
+    assert.equal((await res.json()).headers['x-user-id'], '7');
+    const pub = await rawFetch(`${gateway}/api/flights`, { headers: { 'X-User-Id': '999' } });
+    assert.equal((await pub.json()).headers['x-user-id'], undefined);
 });

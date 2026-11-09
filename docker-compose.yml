@@ -44,6 +44,7 @@ services:
       CAR_RENTAL_SERVICE_URL: http://car-rental-service:3006
       LLM_SERVICE_URL: http://llm-service:3008
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
     restart: unless-stopped
 
   postgres:

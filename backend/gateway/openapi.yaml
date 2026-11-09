@@ -4,7 +4,8 @@ info:
   version: 0.2.0
   description: Single entry point for the Travel Assistant frontend. The API gateway forwards every /api/*
     request to the service that owns it (Trip, Activity, Budget, Flight, Hotel, Car Rental, LLM advice) and
-    adds CORS, X-Request-Id tracing, timeouts and uniform errors. Only the endpoints implemented so far are
+    checks the login token (bearer JWT) on every route except sign-up, login and reading flights, hotels,
+    car rentals and activities, and adds CORS, X-Request-Id tracing, timeouts and uniform errors. Only the endpoints implemented so far are
     listed here. Each service also publishes its own spec and Swagger UI at /docs on its development port
     (3001 trips and accounts, 3004 flights, 3005 hotels, 3006 car rentals, 3007 activities, 3008 advice).
 servers:
@@ -968,6 +969,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     post:
+      security:
+        - bearerAuth: []
       tags:
         - Flights
       summary: Create a flight
@@ -1027,6 +1030,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     put:
+      security:
+        - bearerAuth: []
       tags:
         - Flights
       summary: Replace a flight
@@ -1054,6 +1059,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     patch:
+      security:
+        - bearerAuth: []
       tags:
         - Flights
       summary: Update some fields of a flight
@@ -1080,6 +1087,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     delete:
+      security:
+        - bearerAuth: []
       tags:
         - Flights
       summary: Delete a flight
@@ -1202,6 +1211,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     post:
+      security:
+        - bearerAuth: []
       tags:
         - Hotels
       summary: Create a hotel
@@ -1261,6 +1272,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     put:
+      security:
+        - bearerAuth: []
       tags:
         - Hotels
       summary: Replace a hotel
@@ -1288,6 +1301,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     patch:
+      security:
+        - bearerAuth: []
       tags:
         - Hotels
       summary: Update some fields of a hotel
@@ -1314,6 +1329,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     delete:
+      security:
+        - bearerAuth: []
       tags:
         - Hotels
       summary: Delete a hotel
@@ -1440,6 +1457,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     post:
+      security:
+        - bearerAuth: []
       tags:
         - Car rentals
       summary: Create a car rental
@@ -1499,6 +1518,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     put:
+      security:
+        - bearerAuth: []
       tags:
         - Car rentals
       summary: Replace a car rental
@@ -1526,6 +1547,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     patch:
+      security:
+        - bearerAuth: []
       tags:
         - Car rentals
       summary: Update some fields of a car rental
@@ -1552,6 +1575,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     delete:
+      security:
+        - bearerAuth: []
       tags:
         - Car rentals
       summary: Delete a car rental
@@ -1676,6 +1701,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     post:
+      security:
+        - bearerAuth: []
       tags:
         - Activities
       summary: Create a activity
@@ -1735,6 +1762,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     put:
+      security:
+        - bearerAuth: []
       tags:
         - Activities
       summary: Replace a activity
@@ -1762,6 +1791,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     patch:
+      security:
+        - bearerAuth: []
       tags:
         - Activities
       summary: Update some fields of a activity
@@ -1788,6 +1819,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     delete:
+      security:
+        - bearerAuth: []
       tags:
         - Activities
       summary: Delete a activity
@@ -1805,6 +1838,8 @@ paths:
           $ref: "#/components/responses/UpstreamTimeout"
   /api/advice:
     get:
+      security:
+        - bearerAuth: []
       tags:
         - Advice
       summary: List advices
@@ -1904,6 +1939,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     post:
+      security:
+        - bearerAuth: []
       tags:
         - Advice
       summary: Create a advice
@@ -1945,6 +1982,8 @@ paths:
           minimum: 1
         description: Advice ID
     get:
+      security:
+        - bearerAuth: []
       tags:
         - Advice
       summary: Get one advice
@@ -1965,6 +2004,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     put:
+      security:
+        - bearerAuth: []
       tags:
         - Advice
       summary: Replace a advice
@@ -1992,6 +2033,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     patch:
+      security:
+        - bearerAuth: []
       tags:
         - Advice
       summary: Update some fields of a advice
@@ -2018,6 +2061,8 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
     delete:
+      security:
+        - bearerAuth: []
       tags:
         - Advice
       summary: Delete a advice
@@ -2035,6 +2080,8 @@ paths:
           $ref: "#/components/responses/UpstreamTimeout"
   /api/advice/recommendations:
     post:
+      security:
+        - bearerAuth: []
       tags:
         - Advice
       summary: Create a recommendation summary
