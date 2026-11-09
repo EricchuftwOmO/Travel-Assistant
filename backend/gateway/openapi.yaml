@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: Travel Assistant API
-  version: 0.1.0
-  description: >-
-    Single entry point for the Travel Assistant frontend. The API gateway
-    forwards every /api/* request to the service that owns it (Trip, Activity
-    Search, Budget) and adds CORS, X-Request-Id tracing, timeouts and uniform
-    errors. Only the endpoints implemented so far are listed here.
+  version: 0.2.0
+  description: Single entry point for the Travel Assistant frontend. The API gateway forwards every /api/*
+    request to the service that owns it (Trip, Activity, Budget, Flight, Hotel, Car Rental, LLM advice) and
+    adds CORS, X-Request-Id tracing, timeouts and uniform errors. Only the endpoints implemented so far are
+    listed here. Each service also publishes its own spec and Swagger UI at /docs on its development port
+    (3004 flights, 3005 hotels, 3006 car rentals, 3007 activities, 3008 advice).
 servers:
   - url: http://localhost:8080
     description: API gateway (Docker Compose and default local port)
@@ -16,35 +16,51 @@ paths:
       summary: Gateway liveness check
       operationId: getGatewayHealth
       responses:
-        '200':
+        "200":
           description: The gateway is running
+      tags:
+        - Health
   /api/health:
     get:
       summary: Combined health of every configured service
       operationId: getServicesHealth
       responses:
-        '200':
+        "200":
           description: Every configured service is up
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthReport'
+                $ref: "#/components/schemas/HealthReport"
               example:
                 status: ok
                 services:
-                  trip: { status: up, httpStatus: 200, latencyMs: 4 }
-                  budget: { status: up, httpStatus: 200, latencyMs: 3 }
-        '503':
+                  trip:
+                    status: up
+                    httpStatus: 200
+                    latencyMs: 4
+                  budget:
+                    status: up
+                    httpStatus: 200
+                    latencyMs: 3
+        "503":
           description: At least one service is down
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthReport'
+                $ref: "#/components/schemas/HealthReport"
               example:
                 status: degraded
                 services:
-                  trip: { status: up, httpStatus: 200, latencyMs: 4 }
-                  search: { status: down, reason: unreachable, latencyMs: 1 }
+                  trip:
+                    status: up
+                    httpStatus: 200
+                    latencyMs: 4
+                  search:
+                    status: down
+                    reason: unreachable
+                    latencyMs: 1
+      tags:
+        - Health
   /api/trips:
     get:
       summary: List one user's trips, ordered by start date
@@ -58,28 +74,1196 @@ paths:
             type: string
           example: u1
       responses:
-        '200':
+        "200":
           description: The user's trips (empty array if none)
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Trip'
+                  $ref: "#/components/schemas/Trip"
               example:
                 - id: 1
                   user_id: u1
                   title: Tokyo Trip
-                  start_date: '2026-12-01'
-                  end_date: '2026-12-05'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '500':
-          $ref: '#/components/responses/InternalError'
-        '502':
-          $ref: '#/components/responses/UpstreamUnavailable'
-        '504':
-          $ref: '#/components/responses/UpstreamTimeout'
+                  start_date: 2026-12-01
+                  end_date: 2026-12-05
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+      tags:
+        - Trips
+  /api/flights:
+    get:
+      tags:
+        - Flights
+      summary: List flights
+      operationId: listFlights
+      description: "All filters are optional and can be combined. Responses are cached in Redis (see the X-Cache
+        header: HIT or MISS)."
+      parameters:
+        - name: origin
+          in: query
+          description: Origin airport code (equals (ignore case))
+          schema:
+            type: string
+        - name: destination
+          in: query
+          description: Destination airport code (equals (ignore case))
+          schema:
+            type: string
+        - name: departDate
+          in: query
+          description: Departure date (YYYY-MM-DD) (on date)
+          schema:
+            type: string
+            format: date
+        - name: maxPrice
+          in: query
+          description: Highest price (<=)
+          schema:
+            type: number
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - id
+              - price
+              - depart_at
+              - arrive_at
+            default: id
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: asc
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Page size
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Rows to skip
+      responses:
+        "200":
+          description: A page of flights
+          headers:
+            X-Total-Count:
+              description: Rows matching the filters
+              schema:
+                type: integer
+            X-Cache:
+              description: HIT if served from Redis
+              schema:
+                type: string
+                enum:
+                  - HIT
+                  - MISS
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - count
+                  - total
+                  - data
+                properties:
+                  count:
+                    type: integer
+                  total:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Flight"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    post:
+      tags:
+        - Flights
+      summary: Create a flight
+      operationId: createFlight
+      description: Send every required field.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlightInput"
+      responses:
+        "201":
+          description: Flight created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flight"
+          headers:
+            Location:
+              description: URL of the new record
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+  /api/flights/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        description: Flight ID
+    get:
+      tags:
+        - Flights
+      summary: Get one flight
+      operationId: getFlight
+      responses:
+        "200":
+          description: The flight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flight"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    put:
+      tags:
+        - Flights
+      summary: Replace a flight
+      operationId: replaceFlight
+      description: Send every required field. Optional fields left out go back to their default (or null).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlightInput"
+      responses:
+        "200":
+          description: The updated flight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flight"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    patch:
+      tags:
+        - Flights
+      summary: Update some fields of a flight
+      operationId: updateFlight
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlightPatch"
+      responses:
+        "200":
+          description: The updated flight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flight"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    delete:
+      tags:
+        - Flights
+      summary: Delete a flight
+      operationId: deleteFlight
+      responses:
+        "204":
+          description: Deleted, no content
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+  /api/hotels:
+    get:
+      tags:
+        - Hotels
+      summary: List hotels
+      operationId: listHotels
+      description: "All filters are optional and can be combined. Responses are cached in Redis (see the X-Cache
+        header: HIT or MISS)."
+      parameters:
+        - name: city
+          in: query
+          description: City name (equals (ignore case))
+          schema:
+            type: string
+        - name: country
+          in: query
+          description: Country name (equals (ignore case))
+          schema:
+            type: string
+        - name: minStars
+          in: query
+          description: Fewest stars (>=)
+          schema:
+            type: integer
+        - name: maxPrice
+          in: query
+          description: Highest price per night (<=)
+          schema:
+            type: number
+        - name: available
+          in: query
+          description: Only available (true) or unavailable (false) hotels (equals)
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - id
+              - price_per_night
+              - stars
+              - rating
+            default: id
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: asc
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Page size
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Rows to skip
+      responses:
+        "200":
+          description: A page of hotels
+          headers:
+            X-Total-Count:
+              description: Rows matching the filters
+              schema:
+                type: integer
+            X-Cache:
+              description: HIT if served from Redis
+              schema:
+                type: string
+                enum:
+                  - HIT
+                  - MISS
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - count
+                  - total
+                  - data
+                properties:
+                  count:
+                    type: integer
+                  total:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Hotel"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    post:
+      tags:
+        - Hotels
+      summary: Create a hotel
+      operationId: createHotel
+      description: Send every required field.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HotelInput"
+      responses:
+        "201":
+          description: Hotel created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Hotel"
+          headers:
+            Location:
+              description: URL of the new record
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+  /api/hotels/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        description: Hotel ID
+    get:
+      tags:
+        - Hotels
+      summary: Get one hotel
+      operationId: getHotel
+      responses:
+        "200":
+          description: The hotel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Hotel"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    put:
+      tags:
+        - Hotels
+      summary: Replace a hotel
+      operationId: replaceHotel
+      description: Send every required field. Optional fields left out go back to their default (or null).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HotelInput"
+      responses:
+        "200":
+          description: The updated hotel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Hotel"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    patch:
+      tags:
+        - Hotels
+      summary: Update some fields of a hotel
+      operationId: updateHotel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HotelPatch"
+      responses:
+        "200":
+          description: The updated hotel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Hotel"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    delete:
+      tags:
+        - Hotels
+      summary: Delete a hotel
+      operationId: deleteHotel
+      responses:
+        "204":
+          description: Deleted, no content
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+  /api/car-rentals:
+    get:
+      tags:
+        - Car rentals
+      summary: List car rentals
+      operationId: listCarrentals
+      description: "All filters are optional and can be combined. Responses are cached in Redis (see the X-Cache
+        header: HIT or MISS)."
+      parameters:
+        - name: city
+          in: query
+          description: Pickup city (equals (ignore case))
+          schema:
+            type: string
+        - name: carType
+          in: query
+          description: Car category (equals)
+          schema:
+            type: string
+            enum:
+              - economy
+              - compact
+              - suv
+              - van
+              - luxury
+        - name: minSeats
+          in: query
+          description: Fewest seats (>=)
+          schema:
+            type: integer
+        - name: maxPrice
+          in: query
+          description: Highest price per day (<=)
+          schema:
+            type: number
+        - name: available
+          in: query
+          description: Only available (true) or unavailable (false) cars (equals)
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - id
+              - price_per_day
+              - seats
+            default: id
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: asc
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Page size
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Rows to skip
+      responses:
+        "200":
+          description: A page of car rentals
+          headers:
+            X-Total-Count:
+              description: Rows matching the filters
+              schema:
+                type: integer
+            X-Cache:
+              description: HIT if served from Redis
+              schema:
+                type: string
+                enum:
+                  - HIT
+                  - MISS
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - count
+                  - total
+                  - data
+                properties:
+                  count:
+                    type: integer
+                  total:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Carrental"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    post:
+      tags:
+        - Car rentals
+      summary: Create a car rental
+      operationId: createCarrental
+      description: Send every required field.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CarrentalInput"
+      responses:
+        "201":
+          description: Car rental created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Carrental"
+          headers:
+            Location:
+              description: URL of the new record
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+  /api/car-rentals/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        description: Car rental ID
+    get:
+      tags:
+        - Car rentals
+      summary: Get one car rental
+      operationId: getCarrental
+      responses:
+        "200":
+          description: The car rental
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Carrental"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    put:
+      tags:
+        - Car rentals
+      summary: Replace a car rental
+      operationId: replaceCarrental
+      description: Send every required field. Optional fields left out go back to their default (or null).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CarrentalInput"
+      responses:
+        "200":
+          description: The updated car rental
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Carrental"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    patch:
+      tags:
+        - Car rentals
+      summary: Update some fields of a car rental
+      operationId: updateCarrental
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CarrentalPatch"
+      responses:
+        "200":
+          description: The updated car rental
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Carrental"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    delete:
+      tags:
+        - Car rentals
+      summary: Delete a car rental
+      operationId: deleteCarrental
+      responses:
+        "204":
+          description: Deleted, no content
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+  /api/activities:
+    get:
+      tags:
+        - Activities
+      summary: List activitys
+      operationId: listActivitys
+      description: "All filters are optional and can be combined. Responses are cached in Redis (see the X-Cache
+        header: HIT or MISS)."
+      parameters:
+        - name: city
+          in: query
+          description: City name (equals (ignore case))
+          schema:
+            type: string
+        - name: category
+          in: query
+          description: Activity category (equals)
+          schema:
+            type: string
+            enum:
+              - sightseeing
+              - food
+              - outdoors
+              - museum
+              - nightlife
+              - shopping
+        - name: maxPrice
+          in: query
+          description: Highest price per person (<=)
+          schema:
+            type: number
+        - name: q
+          in: query
+          description: Part of the name (case-insensitive) (contains)
+          schema:
+            type: string
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - id
+              - name
+              - price
+              - rating
+              - duration_minutes
+            default: id
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: asc
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Page size
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Rows to skip
+      responses:
+        "200":
+          description: A page of activitys
+          headers:
+            X-Total-Count:
+              description: Rows matching the filters
+              schema:
+                type: integer
+            X-Cache:
+              description: HIT if served from Redis
+              schema:
+                type: string
+                enum:
+                  - HIT
+                  - MISS
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - count
+                  - total
+                  - data
+                properties:
+                  count:
+                    type: integer
+                  total:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Activity"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    post:
+      tags:
+        - Activities
+      summary: Create a activity
+      operationId: createActivity
+      description: Send every required field.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityInput"
+      responses:
+        "201":
+          description: Activity created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+          headers:
+            Location:
+              description: URL of the new record
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+  /api/activities/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        description: Activity ID
+    get:
+      tags:
+        - Activities
+      summary: Get one activity
+      operationId: getActivity
+      responses:
+        "200":
+          description: The activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    put:
+      tags:
+        - Activities
+      summary: Replace a activity
+      operationId: replaceActivity
+      description: Send every required field. Optional fields left out go back to their default (or null).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityInput"
+      responses:
+        "200":
+          description: The updated activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    patch:
+      tags:
+        - Activities
+      summary: Update some fields of a activity
+      operationId: updateActivity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityPatch"
+      responses:
+        "200":
+          description: The updated activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    delete:
+      tags:
+        - Activities
+      summary: Delete a activity
+      operationId: deleteActivity
+      responses:
+        "204":
+          description: Deleted, no content
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+  /api/advice:
+    get:
+      tags:
+        - Advice
+      summary: List advices
+      operationId: listAdvices
+      description: "All filters are optional and can be combined. Responses are cached in Redis (see the X-Cache
+        header: HIT or MISS)."
+      parameters:
+        - name: userId
+          in: query
+          description: User's ID (equals)
+          schema:
+            type: string
+        - name: tripId
+          in: query
+          description: Trip ID (equals)
+          schema:
+            type: integer
+        - name: topic
+          in: query
+          description: Advice topic (equals)
+          schema:
+            type: string
+            enum:
+              - general
+              - packing
+              - food
+              - safety
+              - budget
+              - itinerary
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - id
+              - created_at
+            default: id
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: asc
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Page size
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Rows to skip
+      responses:
+        "200":
+          description: A page of advices
+          headers:
+            X-Total-Count:
+              description: Rows matching the filters
+              schema:
+                type: integer
+            X-Cache:
+              description: HIT if served from Redis
+              schema:
+                type: string
+                enum:
+                  - HIT
+                  - MISS
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - count
+                  - total
+                  - data
+                properties:
+                  count:
+                    type: integer
+                  total:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Advice"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    post:
+      tags:
+        - Advice
+      summary: Create a advice
+      operationId: createAdvice
+      description: Send every required field. If "content" is left out, the language model writes it from "prompt"
+        (source "llm"); with no API key a placeholder is stored (source "stub"). A model failure returns 502
+        LLM_UNAVAILABLE. The gateway allows 40 s for this call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdviceInput"
+      responses:
+        "201":
+          description: Advice created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Advice"
+          headers:
+            Location:
+              description: URL of the new record
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+  /api/advice/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        description: Advice ID
+    get:
+      tags:
+        - Advice
+      summary: Get one advice
+      operationId: getAdvice
+      responses:
+        "200":
+          description: The advice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Advice"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    put:
+      tags:
+        - Advice
+      summary: Replace a advice
+      operationId: replaceAdvice
+      description: Send every required field. Optional fields left out go back to their default (or null).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdviceInput"
+      responses:
+        "200":
+          description: The updated advice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Advice"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    patch:
+      tags:
+        - Advice
+      summary: Update some fields of a advice
+      operationId: updateAdvice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdvicePatch"
+      responses:
+        "200":
+          description: The updated advice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Advice"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
+    delete:
+      tags:
+        - Advice
+      summary: Delete a advice
+      operationId: deleteAdvice
+      responses:
+        "204":
+          description: Deleted, no content
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "504":
+          $ref: "#/components/responses/UpstreamTimeout"
 components:
   schemas:
     Trip:
@@ -92,40 +1276,57 @@ components:
         title:
           type: string
         start_date:
-          type: [string, 'null']
+          type:
+            - string
+            - "null"
           format: date
         end_date:
-          type: [string, 'null']
+          type:
+            - string
+            - "null"
           format: date
-      required: [id, user_id, title]
+      required:
+        - id
+        - user_id
+        - title
     HealthReport:
       type: object
       properties:
         status:
           type: string
-          enum: [ok, degraded]
+          enum:
+            - ok
+            - degraded
         services:
           type: object
           description: State of each configured service, keyed by service name
           additionalProperties:
-            $ref: '#/components/schemas/ServiceHealth'
-      required: [status, services]
+            $ref: "#/components/schemas/ServiceHealth"
+      required:
+        - status
+        - services
     ServiceHealth:
       type: object
       properties:
         status:
           type: string
-          enum: [up, down]
+          enum:
+            - up
+            - down
         httpStatus:
           type: integer
           description: Status returned by the service's health endpoint
         reason:
           type: string
-          enum: [timeout, unreachable]
+          enum:
+            - timeout
+            - unreachable
           description: Why the service is down, when it did not answer
         latencyMs:
           type: integer
-      required: [status, latencyMs]
+      required:
+        - status
+        - latencyMs
     Error:
       type: object
       properties:
@@ -138,36 +1339,824 @@ components:
             message:
               type: string
             details: {}
-          required: [code, message]
-      required: [error]
+          required:
+            - code
+            - message
+      required:
+        - error
+    Flight:
+      type: object
+      required:
+        - id
+        - airline
+        - flight_number
+        - origin
+        - destination
+        - depart_at
+        - arrive_at
+        - price
+      properties:
+        id:
+          type: integer
+          example: 1
+        airline:
+          type: string
+          example: Alaska Airlines
+        flight_number:
+          type: string
+          maxLength: 10
+          example: AS 21
+        origin:
+          type: string
+          maxLength: 3
+          description: Origin airport code
+          example: SEA
+        destination:
+          type: string
+          maxLength: 3
+          description: Destination airport code
+          example: HND
+        depart_at:
+          type: string
+          format: date-time
+          example: 2026-12-01T10:15:00Z
+        arrive_at:
+          type: string
+          format: date-time
+          example: 2026-12-02T14:05:00Z
+        price:
+          type: number
+          minimum: 0
+          description: Price per passenger
+          example: 845.5
+        currency:
+          type:
+            - string
+            - "null"
+          maxLength: 3
+          default: USD
+          example: USD
+        seats_available:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+          default: 0
+          example: 12
+        created_at:
+          type: string
+          format: date-time
+    FlightInput:
+      type: object
+      additionalProperties: false
+      required:
+        - airline
+        - flight_number
+        - origin
+        - destination
+        - depart_at
+        - arrive_at
+        - price
+      properties:
+        airline:
+          type: string
+          example: Alaska Airlines
+        flight_number:
+          type: string
+          maxLength: 10
+          example: AS 21
+        origin:
+          type: string
+          maxLength: 3
+          description: Origin airport code
+          example: SEA
+        destination:
+          type: string
+          maxLength: 3
+          description: Destination airport code
+          example: HND
+        depart_at:
+          type: string
+          format: date-time
+          example: 2026-12-01T10:15:00Z
+        arrive_at:
+          type: string
+          format: date-time
+          example: 2026-12-02T14:05:00Z
+        price:
+          type: number
+          minimum: 0
+          description: Price per passenger
+          example: 845.5
+        currency:
+          type: string
+          maxLength: 3
+          default: USD
+          example: USD
+        seats_available:
+          type: integer
+          minimum: 0
+          default: 0
+          example: 12
+    FlightPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Any subset of the fields
+      properties:
+        airline:
+          type: string
+          example: Alaska Airlines
+        flight_number:
+          type: string
+          maxLength: 10
+          example: AS 21
+        origin:
+          type: string
+          maxLength: 3
+          description: Origin airport code
+          example: SEA
+        destination:
+          type: string
+          maxLength: 3
+          description: Destination airport code
+          example: HND
+        depart_at:
+          type: string
+          format: date-time
+          example: 2026-12-01T10:15:00Z
+        arrive_at:
+          type: string
+          format: date-time
+          example: 2026-12-02T14:05:00Z
+        price:
+          type: number
+          minimum: 0
+          description: Price per passenger
+          example: 845.5
+        currency:
+          type: string
+          maxLength: 3
+          default: USD
+          example: USD
+        seats_available:
+          type: integer
+          minimum: 0
+          default: 0
+          example: 12
+    Hotel:
+      type: object
+      required:
+        - id
+        - name
+        - city
+        - country
+        - stars
+        - price_per_night
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Hotel Gracery Shinjuku
+        city:
+          type: string
+          example: Tokyo
+        country:
+          type: string
+          example: Japan
+        address:
+          type:
+            - string
+            - "null"
+          example: 1-19-1 Kabukicho, Shinjuku
+        stars:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 4
+        price_per_night:
+          type: number
+          minimum: 0
+          example: 165
+        currency:
+          type:
+            - string
+            - "null"
+          maxLength: 3
+          default: USD
+          example: USD
+        rating:
+          type:
+            - number
+            - "null"
+          minimum: 0
+          maximum: 10
+          description: Guest rating, 0 to 10
+          example: 8.6
+        available:
+          type:
+            - boolean
+            - "null"
+          default: true
+          example: true
+        created_at:
+          type: string
+          format: date-time
+    HotelInput:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - city
+        - country
+        - stars
+        - price_per_night
+      properties:
+        name:
+          type: string
+          example: Hotel Gracery Shinjuku
+        city:
+          type: string
+          example: Tokyo
+        country:
+          type: string
+          example: Japan
+        address:
+          type: string
+          example: 1-19-1 Kabukicho, Shinjuku
+        stars:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 4
+        price_per_night:
+          type: number
+          minimum: 0
+          example: 165
+        currency:
+          type: string
+          maxLength: 3
+          default: USD
+          example: USD
+        rating:
+          type: number
+          minimum: 0
+          maximum: 10
+          description: Guest rating, 0 to 10
+          example: 8.6
+        available:
+          type: boolean
+          default: true
+          example: true
+    HotelPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Any subset of the fields
+      properties:
+        name:
+          type: string
+          example: Hotel Gracery Shinjuku
+        city:
+          type: string
+          example: Tokyo
+        country:
+          type: string
+          example: Japan
+        address:
+          type: string
+          example: 1-19-1 Kabukicho, Shinjuku
+        stars:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 4
+        price_per_night:
+          type: number
+          minimum: 0
+          example: 165
+        currency:
+          type: string
+          maxLength: 3
+          default: USD
+          example: USD
+        rating:
+          type: number
+          minimum: 0
+          maximum: 10
+          description: Guest rating, 0 to 10
+          example: 8.6
+        available:
+          type: boolean
+          default: true
+          example: true
+    Carrental:
+      type: object
+      required:
+        - id
+        - company
+        - car_type
+        - model
+        - pickup_city
+        - price_per_day
+      properties:
+        id:
+          type: integer
+          example: 1
+        company:
+          type: string
+          example: Hertz
+        car_type:
+          type: string
+          enum:
+            - economy
+            - compact
+            - suv
+            - van
+            - luxury
+          example: compact
+        model:
+          type: string
+          example: Toyota Corolla
+        pickup_city:
+          type: string
+          example: Seattle
+        seats:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 15
+          default: 5
+          example: 5
+        transmission:
+          type:
+            - string
+            - "null"
+          enum:
+            - automatic
+            - manual
+            - null
+          default: automatic
+          example: automatic
+        price_per_day:
+          type: number
+          minimum: 0
+          example: 54
+        currency:
+          type:
+            - string
+            - "null"
+          maxLength: 3
+          default: USD
+          example: USD
+        available:
+          type:
+            - boolean
+            - "null"
+          default: true
+          example: true
+        created_at:
+          type: string
+          format: date-time
+    CarrentalInput:
+      type: object
+      additionalProperties: false
+      required:
+        - company
+        - car_type
+        - model
+        - pickup_city
+        - price_per_day
+      properties:
+        company:
+          type: string
+          example: Hertz
+        car_type:
+          type: string
+          enum:
+            - economy
+            - compact
+            - suv
+            - van
+            - luxury
+          example: compact
+        model:
+          type: string
+          example: Toyota Corolla
+        pickup_city:
+          type: string
+          example: Seattle
+        seats:
+          type: integer
+          minimum: 1
+          maximum: 15
+          default: 5
+          example: 5
+        transmission:
+          type: string
+          enum:
+            - automatic
+            - manual
+          default: automatic
+          example: automatic
+        price_per_day:
+          type: number
+          minimum: 0
+          example: 54
+        currency:
+          type: string
+          maxLength: 3
+          default: USD
+          example: USD
+        available:
+          type: boolean
+          default: true
+          example: true
+    CarrentalPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Any subset of the fields
+      properties:
+        company:
+          type: string
+          example: Hertz
+        car_type:
+          type: string
+          enum:
+            - economy
+            - compact
+            - suv
+            - van
+            - luxury
+          example: compact
+        model:
+          type: string
+          example: Toyota Corolla
+        pickup_city:
+          type: string
+          example: Seattle
+        seats:
+          type: integer
+          minimum: 1
+          maximum: 15
+          default: 5
+          example: 5
+        transmission:
+          type: string
+          enum:
+            - automatic
+            - manual
+          default: automatic
+          example: automatic
+        price_per_day:
+          type: number
+          minimum: 0
+          example: 54
+        currency:
+          type: string
+          maxLength: 3
+          default: USD
+          example: USD
+        available:
+          type: boolean
+          default: true
+          example: true
+    Activity:
+      type: object
+      required:
+        - id
+        - name
+        - city
+        - category
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Senso-ji Temple
+        city:
+          type: string
+          example: Tokyo
+        category:
+          type: string
+          enum:
+            - sightseeing
+            - food
+            - outdoors
+            - museum
+            - nightlife
+            - shopping
+          example: sightseeing
+        description:
+          type:
+            - string
+            - "null"
+          example: Tokyo's oldest temple, with a lively market street leading to it.
+        price:
+          type:
+            - number
+            - "null"
+          minimum: 0
+          default: 0
+          description: Cost per person (0 = free)
+          example: 0
+        currency:
+          type:
+            - string
+            - "null"
+          maxLength: 3
+          default: USD
+          example: USD
+        duration_minutes:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          example: 90
+        rating:
+          type:
+            - number
+            - "null"
+          minimum: 0
+          maximum: 5
+          example: 4.7
+        created_at:
+          type: string
+          format: date-time
+    ActivityInput:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - city
+        - category
+      properties:
+        name:
+          type: string
+          example: Senso-ji Temple
+        city:
+          type: string
+          example: Tokyo
+        category:
+          type: string
+          enum:
+            - sightseeing
+            - food
+            - outdoors
+            - museum
+            - nightlife
+            - shopping
+          example: sightseeing
+        description:
+          type: string
+          example: Tokyo's oldest temple, with a lively market street leading to it.
+        price:
+          type: number
+          minimum: 0
+          default: 0
+          description: Cost per person (0 = free)
+          example: 0
+        currency:
+          type: string
+          maxLength: 3
+          default: USD
+          example: USD
+        duration_minutes:
+          type: integer
+          minimum: 1
+          example: 90
+        rating:
+          type: number
+          minimum: 0
+          maximum: 5
+          example: 4.7
+    ActivityPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Any subset of the fields
+      properties:
+        name:
+          type: string
+          example: Senso-ji Temple
+        city:
+          type: string
+          example: Tokyo
+        category:
+          type: string
+          enum:
+            - sightseeing
+            - food
+            - outdoors
+            - museum
+            - nightlife
+            - shopping
+          example: sightseeing
+        description:
+          type: string
+          example: Tokyo's oldest temple, with a lively market street leading to it.
+        price:
+          type: number
+          minimum: 0
+          default: 0
+          description: Cost per person (0 = free)
+          example: 0
+        currency:
+          type: string
+          maxLength: 3
+          default: USD
+          example: USD
+        duration_minutes:
+          type: integer
+          minimum: 1
+          example: 90
+        rating:
+          type: number
+          minimum: 0
+          maximum: 5
+          example: 4.7
+    Advice:
+      type: object
+      required:
+        - id
+        - user_id
+        - prompt
+      properties:
+        id:
+          type: integer
+          example: 1
+        user_id:
+          type: string
+          maxLength: 50
+          example: u1
+        trip_id:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          description: Trip this advice is about (optional)
+          example: 1
+        topic:
+          type:
+            - string
+            - "null"
+          enum:
+            - general
+            - packing
+            - food
+            - safety
+            - budget
+            - itinerary
+            - null
+          default: general
+          example: packing
+        prompt:
+          type: string
+          maxLength: 1000
+          description: The question to ask the LLM
+          example: What should I pack for Tokyo in December?
+        content:
+          type:
+            - string
+            - "null"
+          description: The answer. Leave out on create to have the LLM write it.
+          example: "Pack layers: it is cold but dry. Bring a warm coat, comfortable shoes, and a Suica card."
+        model:
+          type:
+            - string
+            - "null"
+          description: Model that wrote the content (set by the service)
+        source:
+          type:
+            - string
+            - "null"
+          enum:
+            - llm
+            - stub
+            - user
+            - null
+          description: llm = model answer, stub = placeholder (no API key), user = content supplied by the caller
+        created_at:
+          type: string
+          format: date-time
+    AdviceInput:
+      type: object
+      additionalProperties: false
+      required:
+        - user_id
+        - prompt
+      properties:
+        user_id:
+          type: string
+          maxLength: 50
+          example: u1
+        trip_id:
+          type: integer
+          minimum: 1
+          description: Trip this advice is about (optional)
+          example: 1
+        topic:
+          type: string
+          enum:
+            - general
+            - packing
+            - food
+            - safety
+            - budget
+            - itinerary
+          default: general
+          example: packing
+        prompt:
+          type: string
+          maxLength: 1000
+          description: The question to ask the LLM
+          example: What should I pack for Tokyo in December?
+        content:
+          type: string
+          description: The answer. Leave out on create to have the LLM write it.
+          example: "Pack layers: it is cold but dry. Bring a warm coat, comfortable shoes, and a Suica card."
+    AdvicePatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Any subset of the fields
+      properties:
+        user_id:
+          type: string
+          maxLength: 50
+          example: u1
+        trip_id:
+          type: integer
+          minimum: 1
+          description: Trip this advice is about (optional)
+          example: 1
+        topic:
+          type: string
+          enum:
+            - general
+            - packing
+            - food
+            - safety
+            - budget
+            - itinerary
+          default: general
+          example: packing
+        prompt:
+          type: string
+          maxLength: 1000
+          description: The question to ask the LLM
+          example: What should I pack for Tokyo in December?
+        content:
+          type: string
+          description: The answer. Leave out on create to have the LLM write it.
+          example: "Pack layers: it is cold but dry. Bring a warm coat, comfortable shoes, and a Suica card."
   responses:
     BadRequest:
       description: The request is missing or has an invalid parameter
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
     NotFound:
       description: The requested resource does not exist, or no service owns the path (NOT_FOUND)
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
     InternalError:
       description: Unexpected error (INTERNAL_ERROR)
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
     UpstreamUnavailable:
       description: The owning service is down or refused the connection (UPSTREAM_UNAVAILABLE)
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
     UpstreamTimeout:
       description: The owning service did not answer in time (UPSTREAM_TIMEOUT)
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
+    BadGateway:
+      description: The language model failed (LLM_UNAVAILABLE)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+tags:
+  - name: Health
+  - name: Trips
+  - name: Flights
+  - name: Hotels
+  - name: Car rentals
+  - name: Activities
+  - name: Advice

@@ -9,6 +9,10 @@ const ROUTE_RULES = [
     { service: 'trip', pattern: /^\/api\/trips(\/|$)/ },                  // #1-#8
     { service: 'search', pattern: /^\/api\/activities(\/|$)/ },           // #9
     { service: 'budget', pattern: /^\/api\/budget(\/|$)/ },               // #11
+    { service: 'flight', pattern: /^\/api\/flights(\/|$)/ },
+    { service: 'hotel', pattern: /^\/api\/hotels(\/|$)/ },
+    { service: 'carRental', pattern: /^\/api\/car-rentals(\/|$)/ },
+    { service: 'llm', pattern: /^\/api\/advice(\/|$)/ },
     { service: 'planner', pattern: /^\/api\/planner(\/|$)/ },             // #12-#13 (stretch)
 ];
 

@@ -41,6 +41,23 @@ function loadConfig() {
                 url: process.env.BUDGET_SERVICE_URL || 'http://localhost:3003',
                 timeoutMs: defaultTimeoutMs,
             },
+            flight: {
+                url: process.env.FLIGHT_SERVICE_URL || 'http://localhost:3004',
+                timeoutMs: defaultTimeoutMs,
+            },
+            hotel: {
+                url: process.env.HOTEL_SERVICE_URL || 'http://localhost:3005',
+                timeoutMs: defaultTimeoutMs,
+            },
+            carRental: {
+                url: process.env.CAR_RENTAL_SERVICE_URL || 'http://localhost:3006',
+                timeoutMs: defaultTimeoutMs,
+            },
+            // The LLM Service waits on a language model, so it gets a longer timeout
+            llm: {
+                url: process.env.LLM_SERVICE_URL || 'http://localhost:3008',
+                timeoutMs: intFromEnv('LLM_TIMEOUT_MS', 40000),
+            },
             planner: {
                 url: process.env.PLANNER_SERVICE_URL || '',
                 timeoutMs: intFromEnv('PLANNER_TIMEOUT_MS', 60000),
