@@ -13,8 +13,12 @@ The first matching rule wins:
 |---|---|---|---|
 | `/api/trips/:tripId/budget` | Budget | `http://localhost:3003` | 5 s |
 | `/api/trips`, `/api/trips/*` | Trip | `http://localhost:3001` | 5 s |
-| `/api/activities/*` | Activity Search | `http://localhost:3002` | 5 s |
+| `/api/activities/*` | Activity (`SEARCH_SERVICE_URL`) | `http://localhost:3007` | 5 s |
 | `/api/budget/*` | Budget | `http://localhost:3003` | 5 s |
+| `/api/flights/*` | Flight | `http://localhost:3004` | 5 s |
+| `/api/hotels/*` | Hotel | `http://localhost:3005` | 5 s |
+| `/api/car-rentals/*` | Car Rental | `http://localhost:3006` | 5 s |
+| `/api/advice/*` | LLM (travel advice) | `http://localhost:3008` | 40 s |
 | `/api/planner/*` | AI Planner (stretch) | not set, so not routed | 60 s |
 
 Forwarding uses [`http-proxy-middleware`](https://github.com/chimurai/http-proxy-middleware)

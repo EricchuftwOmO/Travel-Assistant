@@ -1,0 +1,430 @@
+openapi: 3.1.0
+info:
+  title: Travel Assistant - Advice Service
+  version: 1.0.0
+  description: 'Saved travel advice. When a new advice record is created without "content", the LLM service asks
+    the language model to answer the "prompt" and stores the answer. Without an API key it stores a
+    placeholder answer (source "stub") so the service still works offline. Errors use { "error": { "code",
+    "message", "details" } }.'
+servers:
+  - url: http://localhost:3008
+    description: llm-service (published on localhost for development; other clients go through the gateway on port 8080)
+tags:
+  - name: Advice
+  - name: Health
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Service and database health check
+      operationId: getAdviceServiceHealth
+      responses:
+        "200":
+          description: Service and database are up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: llm-service
+                  cache:
+                    type: string
+                    enum:
+                      - redis
+                      - off
+        "503":
+          description: Database unavailable
+  /api/advice:
+    get:
+      tags:
+        - Advice
+      summary: List advices
+      operationId: listAdvices
+      description: "All filters are optional and can be combined. Responses are cached in Redis (see the X-Cache
+        header: HIT or MISS)."
+      parameters:
+        - name: userId
+          in: query
+          description: User's ID (equals)
+          schema:
+            type: string
+        - name: tripId
+          in: query
+          description: Trip ID (equals)
+          schema:
+            type: integer
+        - name: topic
+          in: query
+          description: Advice topic (equals)
+          schema:
+            type: string
+            enum:
+              - general
+              - packing
+              - food
+              - safety
+              - budget
+              - itinerary
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - id
+              - created_at
+            default: id
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: asc
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Page size
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Rows to skip
+      responses:
+        "200":
+          description: A page of advices
+          headers:
+            X-Total-Count:
+              description: Rows matching the filters
+              schema:
+                type: integer
+            X-Cache:
+              description: HIT if served from Redis
+              schema:
+                type: string
+                enum:
+                  - HIT
+                  - MISS
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - count
+                  - total
+                  - data
+                properties:
+                  count:
+                    type: integer
+                  total:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Advice"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    post:
+      tags:
+        - Advice
+      summary: Create a advice
+      operationId: createAdvice
+      description: Send every required field. If "content" is left out, the language model writes it from "prompt"
+        (source "llm"); with no API key a placeholder is stored (source "stub"). A model failure returns 502
+        LLM_UNAVAILABLE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdviceInput"
+      responses:
+        "201":
+          description: Advice created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Advice"
+          headers:
+            Location:
+              description: URL of the new record
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+  /api/advice/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        description: Advice ID
+    get:
+      tags:
+        - Advice
+      summary: Get one advice
+      operationId: getAdvice
+      responses:
+        "200":
+          description: The advice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Advice"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags:
+        - Advice
+      summary: Replace a advice
+      operationId: replaceAdvice
+      description: Send every required field. Optional fields left out go back to their default (or null).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdviceInput"
+      responses:
+        "200":
+          description: The updated advice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Advice"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags:
+        - Advice
+      summary: Update some fields of a advice
+      operationId: updateAdvice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdvicePatch"
+      responses:
+        "200":
+          description: The updated advice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Advice"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - Advice
+      summary: Delete a advice
+      operationId: deleteAdvice
+      responses:
+        "204":
+          description: Deleted, no content
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+components:
+  schemas:
+    Advice:
+      type: object
+      required:
+        - id
+        - user_id
+        - prompt
+      properties:
+        id:
+          type: integer
+          example: 1
+        user_id:
+          type: string
+          maxLength: 50
+          example: u1
+        trip_id:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          description: Trip this advice is about (optional)
+          example: 1
+        topic:
+          type:
+            - string
+            - "null"
+          enum:
+            - general
+            - packing
+            - food
+            - safety
+            - budget
+            - itinerary
+            - null
+          default: general
+          example: packing
+        prompt:
+          type: string
+          maxLength: 1000
+          description: The question to ask the LLM
+          example: What should I pack for Tokyo in December?
+        content:
+          type:
+            - string
+            - "null"
+          description: The answer. Leave out on create to have the LLM write it.
+          example: "Pack layers: it is cold but dry. Bring a warm coat, comfortable shoes, and a Suica card."
+        model:
+          type:
+            - string
+            - "null"
+          description: Model that wrote the content (set by the service)
+        source:
+          type:
+            - string
+            - "null"
+          enum:
+            - llm
+            - stub
+            - user
+            - null
+          description: llm = model answer, stub = placeholder (no API key), user = content supplied by the caller
+        created_at:
+          type: string
+          format: date-time
+    AdviceInput:
+      type: object
+      additionalProperties: false
+      required:
+        - user_id
+        - prompt
+      properties:
+        user_id:
+          type: string
+          maxLength: 50
+          example: u1
+        trip_id:
+          type: integer
+          minimum: 1
+          description: Trip this advice is about (optional)
+          example: 1
+        topic:
+          type: string
+          enum:
+            - general
+            - packing
+            - food
+            - safety
+            - budget
+            - itinerary
+          default: general
+          example: packing
+        prompt:
+          type: string
+          maxLength: 1000
+          description: The question to ask the LLM
+          example: What should I pack for Tokyo in December?
+        content:
+          type: string
+          description: The answer. Leave out on create to have the LLM write it.
+          example: "Pack layers: it is cold but dry. Bring a warm coat, comfortable shoes, and a Suica card."
+    AdvicePatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Any subset of the fields
+      properties:
+        user_id:
+          type: string
+          maxLength: 50
+          example: u1
+        trip_id:
+          type: integer
+          minimum: 1
+          description: Trip this advice is about (optional)
+          example: 1
+        topic:
+          type: string
+          enum:
+            - general
+            - packing
+            - food
+            - safety
+            - budget
+            - itinerary
+          default: general
+          example: packing
+        prompt:
+          type: string
+          maxLength: 1000
+          description: The question to ask the LLM
+          example: What should I pack for Tokyo in December?
+        content:
+          type: string
+          description: The answer. Leave out on create to have the LLM write it.
+          example: "Pack layers: it is cold but dry. Bring a warm coat, comfortable shoes, and a Suica card."
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              example: NOT_FOUND
+            message:
+              type: string
+            details: {}
+  responses:
+    BadRequest:
+      description: Invalid or missing field or query parameter (BAD_REQUEST). "details" lists every invalid field.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: BAD_REQUEST
+              message: Validation failed
+              details:
+                - field: name
+                  message: is required
+    NotFound:
+      description: Advice not found (NOT_FOUND)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BadGateway:
+      description: The language model failed (LLM_UNAVAILABLE)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

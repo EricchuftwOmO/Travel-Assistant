@@ -56,6 +56,10 @@ before(async () => {
             trip: { url: await echoService('trip'), timeoutMs: 1000 },
             search: { url: await echoService('search'), timeoutMs: 1000 },
             budget: { url: await echoService('budget'), timeoutMs: 1000 },
+            flight: { url: await echoService('flight'), timeoutMs: 1000 },
+            hotel: { url: await echoService('hotel'), timeoutMs: 1000 },
+            carRental: { url: await echoService('carRental'), timeoutMs: 1000 },
+            llm: { url: await echoService('llm'), timeoutMs: 1000 },
             // The planner is "slow": it never answers, to test the timeout
             planner: { url: await listen(() => {}), timeoutMs: 200 },
         },
@@ -76,6 +80,12 @@ test('routes each path to the owning service', async () => {
         ['/api/trips/1/budget', 'budget'],
         ['/api/activities/search?city=seattle', 'search'],
         ['/api/budget/estimate', 'budget'],
+        ['/api/flights?origin=SEA', 'flight'],
+        ['/api/flights/3', 'flight'],
+        ['/api/hotels?city=Tokyo', 'hotel'],
+        ['/api/car-rentals/2', 'carRental'],
+        ['/api/activities?city=Seattle', 'search'],
+        ['/api/advice?userId=u1', 'llm'],
     ];
     for (const [path, service] of cases) {
         const res = await fetch(gateway + path);

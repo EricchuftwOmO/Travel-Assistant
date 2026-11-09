@@ -3,8 +3,15 @@
 #   docker compose down            stop
 #   docker compose logs -f gateway follow one service's logs
 #
-# Only the gateway publishes a port (http://localhost:8080). The other services
-# are reachable only inside the Compose network, by service name.
+# Clients talk only to the gateway (http://localhost:8080). The other services
+# are reached inside the Compose network by service name. The new services also
+# publish a port on 127.0.0.1 (this computer only) so you can open their
+# Swagger UI at /docs; remove those "ports:" lines to keep them fully private.
+#
+# Data: one PostgreSQL server with a separate database per service (created by
+# each service on first start), and one Redis used as a GET cache by the
+# flight, hotel, car-rental and activity services (keys are prefixed per service).
+# Set GROQ_API_KEY in .env for real LLM answers; without it advice is a placeholder.
 #
 # Adding a service: give it a folder in backend/ with its own Dockerfile and a
 # GET /health endpoint, add a block below (no "ports:"), and point the gateway's
@@ -29,7 +36,146 @@ services:
     environment:
       PORT: 8080
       TRIP_SERVICE_URL: http://trip-service:3001
-      SEARCH_SERVICE_URL: http://search-service:3002
+      SEARCH_SERVICE_URL: http://activity-service:3007
       BUDGET_SERVICE_URL: http://budget-service:3003
+      FLIGHT_SERVICE_URL: http://flight-service:3004
+      HOTEL_SERVICE_URL: http://hotel-service:3005
+      CAR_RENTAL_SERVICE_URL: http://car-rental-service:3006
+      LLM_SERVICE_URL: http://llm-service:3008
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
     restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  flight-service:
+    build: ./backend/flight-service
+    ports:
+      - "127.0.0.1:3004:3004"   # dev only: Swagger UI at http://localhost:3004/docs
+    environment:
+      PORT: 3004
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3004/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  hotel-service:
+    build: ./backend/hotel-service
+    ports:
+      - "127.0.0.1:3005:3005"   # dev only: Swagger UI at http://localhost:3005/docs
+    environment:
+      PORT: 3005
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3005/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  car-rental-service:
+    build: ./backend/car-rental-service
+    ports:
+      - "127.0.0.1:3006:3006"   # dev only: Swagger UI at http://localhost:3006/docs
+    environment:
+      PORT: 3006
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3006/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  activity-service:
+    build: ./backend/activity-service
+    ports:
+      - "127.0.0.1:3007:3007"   # dev only: Swagger UI at http://localhost:3007/docs
+    environment:
+      PORT: 3007
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3007/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  llm-service:
+    build: ./backend/llm-service
+    ports:
+      - "127.0.0.1:3008:3008"   # dev only: Swagger UI at http://localhost:3008/docs
+    environment:
+      PORT: 3008
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-openai/gpt-oss-20b}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3008/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  pgdata:
