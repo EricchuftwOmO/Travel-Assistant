@@ -1,0 +1,195 @@
+newman
+
+Travel Assistant API (Phase II)
+
+Folder 0. Health
+Sub-folder Gateway liveness
+  GET http://localhost:8080/health [200 OK, 278B, 12ms]
+  Pass  Status is 200
+  Pass  status ok
+
+Sub-folder Combined service health
+  GET http://localhost:8080/api/health [503 Service Unavailable, 724B, 36ms]
+  Pass  200 or 503 (degraded)
+  Pass  flight service is up
+  Pass  hotel service is up
+  Pass  carRental service is up
+  Pass  search service is up
+  Pass  llm service is up
+
+Folder 1. Flights (CRUD)
+Sub-folder List flights, filtered and sorted
+  GET http://localhost:8080/api/flights?origin=SEA&destination=HND&sort=price [200 OK, 847B, 9ms]
+  Pass  Status is 200
+  Pass  X-Total-Count header matches total
+  Pass  every flight is SEA to HND
+  Pass  sorted by price ascending
+
+Sub-folder Create a flight
+  POST http://localhost:8080/api/flights [201 Created, 555B, 10ms]
+  Pass  Status is 201
+  Pass  Location header points at the new flight
+  Pass  price stored as a number
+
+Sub-folder Get the flight
+  GET http://localhost:8080/api/flights/7 [200 OK, 539B, 3ms]
+  Pass  Status is 200
+  Pass  is the flight we created
+
+Sub-folder Update the price (PATCH)
+  PATCH http://localhost:8080/api/flights/7 [200 OK, 522B, 4ms]
+  Pass  Status is 200
+  Pass  price changed, other fields kept
+
+Sub-folder Delete the flight
+  DELETE http://localhost:8080/api/flights/7 [204 No Content, 163B, 4ms]
+  Pass  Status is 204
+
+Sub-folder Get the deleted flight -> 404
+  GET http://localhost:8080/api/flights/7 [404 Not Found, 347B, 3ms]
+  Pass  Status is 404
+  Pass  Error uses { error: { code, message } } with code NOT_FOUND
+
+Sub-folder ERROR: create with missing and invalid fields -> 400
+  POST http://localhost:8080/api/flights [400 Bad Request, 685B, 2ms]
+  Pass  Status is 400
+  Pass  Error uses { error: { code, message } } with code BAD_REQUEST
+  Pass  details list every bad field
+
+Sub-folder ERROR: bad sort column -> 400
+  GET http://localhost:8080/api/flights?sort=password [400 Bad Request, 404B, 3ms]
+  Pass  Status is 400
+  Pass  Error uses { error: { code, message } } with code BAD_REQUEST
+
+Folder 2. Hotels, car rentals, activities
+Sub-folder Hotels: Tokyo, 4+ stars, under $200
+  GET http://localhost:8080/api/hotels?city=Tokyo&minStars=4&maxPrice=200&available=true [200 OK, 561B, 7ms]
+  Pass  Status is 200
+  Pass  only matching hotels
+
+Sub-folder Car rentals: SUVs in Seattle
+  GET http://localhost:8080/api/car-rentals?city=Seattle&carType=suv [200 OK, 556B, 6ms]
+  Pass  Status is 200
+  Pass  only SUVs
+
+Sub-folder ERROR: unknown car type -> 400
+  GET http://localhost:8080/api/car-rentals?carType=boat [400 Bad Request, 410B, 2ms]
+  Pass  Status is 400
+  Pass  Error uses { error: { code, message } } with code BAD_REQUEST
+
+Sub-folder Activities: name contains "market", best rated first
+  GET http://localhost:8080/api/activities?q=market&sort=rating&order=desc [200 OK, 1.04kB, 6ms]
+  Pass  Status is 200
+  Pass  names contain market
+  Pass  rating descending
+
+Folder 3. Advice (LLM service)
+Sub-folder Save your own advice (no model call)
+  POST http://localhost:8080/api/advice [201 Created, 487B, 9ms]
+  Pass  Status is 201
+  Pass  source is user
+
+Sub-folder Ask for advice (model, or a labelled placeholder without an API key)
+  POST http://localhost:8080/api/advice [201 Created, 548B, 5ms]
+  Pass  Status is 201
+  Pass  answer was written
+  Pass  source is llm or stub
+
+Sub-folder List my advice
+  GET http://localhost:8080/api/advice?userId=postman [200 OK, 776B, 4ms]
+  Pass  Status is 200
+  Pass  has the two records
+
+Sub-folder ERROR: missing prompt -> 400
+  POST http://localhost:8080/api/advice [400 Bad Request, 391B, 2ms]
+  Pass  Status is 400
+  Pass  Error uses { error: { code, message } } with code BAD_REQUEST
+
+Sub-folder Cleanup: delete advice 1
+  DELETE http://localhost:8080/api/advice/4 [204 No Content, 163B, 4ms]
+  Pass  Status is 204
+
+Sub-folder Cleanup: delete advice 2
+  DELETE http://localhost:8080/api/advice/5 [204 No Content, 163B, 2ms]
+  Pass  Status is 204
+
+Folder 4. Recommendation summary (business logic)
+Sub-folder Recommend a 5-night Tokyo trip within $2500
+  POST http://localhost:8080/api/advice/recommendations [201 Created, 832B, 27ms]
+  Pass  Status is 201
+  Pass  Location header points at the saved advice
+  Pass  total equals the sum of the breakdown (computed in code)
+  Pass  within budget and remaining is budget minus total
+  Pass  selection uses real ids
+  Pass  summary is saved and mentions the total
+
+Sub-folder The recommendation was saved as advice
+  GET http://localhost:8080/api/advice/6 [200 OK, 792B, 2ms]
+  Pass  Status is 200
+  Pass  topic itinerary, owned by postman
+
+Sub-folder Tight budget: package is reported as over budget, not hidden
+  POST http://localhost:8080/api/advice/recommendations [201 Created, 746B, 6ms]
+  Pass  Status is 201
+  Pass  over budget is reported honestly
+  Pass  cheapest hotel was used
+
+Sub-folder Two travelers: flight and activities double, hotel room does not
+  POST http://localhost:8080/api/advice/recommendations [201 Created, 823B, 5ms]
+  Pass  Status is 201
+  Pass  flight and activities are doubled for 2 travelers
+  Pass  the hotel room is charged once: best-rated hotel 410 x 2 nights, not x 2 travelers
+
+Sub-folder Include a rental car (charged per day, once)
+  POST http://localhost:8080/api/advice/recommendations [201 Created, 889B, 7ms]
+  Pass  Status is 201
+  Pass  a car was selected
+  Pass  car cost = cheapest Tokyo car 61/day x 3 days
+  Pass  total includes the car
+
+Sub-folder ERROR: missing user_id and negative budget -> 400
+  POST http://localhost:8080/api/advice/recommendations [400 Bad Request, 442B, 2ms]
+  Pass  Status is 400
+  Pass  Error uses { error: { code, message } } with code BAD_REQUEST
+  Pass  details name both fields
+
+Sub-folder ERROR: destination with no data -> 404
+  POST http://localhost:8080/api/advice/recommendations [404 Not Found, 365B, 5ms]
+  Pass  Status is 404
+  Pass  Error uses { error: { code, message } } with code NOT_FOUND
+
+Sub-folder Cleanup: delete recommendations
+  DELETE http://localhost:8080/api/advice/6 [204 No Content, 163B, 2ms]
+  Pass  Status is 204
+
+Sub-folder Cleanup 2
+  DELETE http://localhost:8080/api/advice/7 [204 No Content, 163B, 2ms]
+  Pass  Status is 204
+
+Sub-folder Cleanup 3
+  DELETE http://localhost:8080/api/advice/8 [204 No Content, 163B, 2ms]
+  Pass  Status is 204
+
+Sub-folder Cleanup 4
+  DELETE http://localhost:8080/api/advice/9 [204 No Content, 163B, 2ms]
+  Pass  Status is 204
+
+---------------------------------------------------------------
+|                         |        executed |          failed |
+--------------------------+-----------------+------------------
+|              iterations |               1 |               0 |
+--------------------------+-----------------+------------------
+|                requests |              31 |               0 |
+--------------------------+-----------------+------------------
+|            test-scripts |              31 |               0 |
+--------------------------+-----------------+------------------
+|      prerequest-scripts |               0 |               0 |
+--------------------------+-----------------+------------------
+|              assertions |              74 |               0 |
+---------------------------------------------------------------
+| total run duration: 504ms                                   |
+---------------------------------------------------------------
+| total data received: 7.66kB (approx)                        |
+---------------------------------------------------------------
+| average response time: 6ms [min: 2ms, max: 36ms, s.d.: 7ms] |
+---------------------------------------------------------------

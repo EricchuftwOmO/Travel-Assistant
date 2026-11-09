@@ -105,7 +105,8 @@ paths:
       summary: List flights
       operationId: listFlights
       description: "All filters are optional and can be combined. Responses are cached in Redis (see the X-Cache
-        header: HIT or MISS)."
+        header: HIT or MISS). Planned: live results from SerpApi (Google Flights); today the Flight service
+        reads its stored flights."
       parameters:
         - name: origin
           in: query
@@ -334,7 +335,8 @@ paths:
       summary: List hotels
       operationId: listHotels
       description: "All filters are optional and can be combined. Responses are cached in Redis (see the X-Cache
-        header: HIT or MISS)."
+        header: HIT or MISS). Planned: live results from SerpApi (Google Hotels); today the Hotel service
+        reads its stored hotels."
       parameters:
         - name: city
           in: query
@@ -1264,6 +1266,69 @@ paths:
           $ref: "#/components/responses/UpstreamUnavailable"
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
+  /api/advice/recommendations:
+    post:
+      tags:
+        - Advice
+      summary: Create a recommendation summary
+      operationId: createRecommendation
+      description: The LLM service calls the Flight, Hotel and Activity services (and the Car Rental service when
+        include_car is true) directly, lets the language model choose among the results (or picks with plain
+        rules when no GROQ_API_KEY is set or the model's choice is unusable), adds up the cost in code, checks
+        it against the budget, and saves the summary as advice. Nothing is saved if a service or the model
+        fails.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecommendationRequest"
+      responses:
+        "201":
+          description: Recommendation saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recommendation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: No flights, hotels or activities found for the destination (NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: LLM_UNAVAILABLE (the model failed) or SERVICE_UNAVAILABLE (a search service is down). Nothing is
+            saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/trips/{tripId}/settlements:
+    get:
+      tags:
+        - Planned
+      summary: Who owes whom for a trip (planned)
+      operationId: getSettlements
+      description: PLANNED (Phase III, Travel service). For each currency, work out every member's balance (paid
+        minus owed) and the smallest set of payments that settles everyone.
+      parameters:
+        - name: tripId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Balances and transfers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettlementReport"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   schemas:
     Trip:
@@ -2115,6 +2180,153 @@ components:
           type: string
           description: The answer. Leave out on create to have the LLM write it.
           example: "Pack layers: it is cold but dry. Bring a warm coat, comfortable shoes, and a Suica card."
+    RecommendationRequest:
+      type: object
+      required:
+        - user_id
+        - destination
+        - budget
+      additionalProperties: false
+      properties:
+        user_id:
+          type: string
+          example: u1
+        trip_id:
+          type: integer
+          minimum: 1
+          example: 1
+        origin:
+          type: string
+          description: Origin airport code
+          example: SEA
+        destination:
+          type: string
+          example: Tokyo
+        nights:
+          type: integer
+          minimum: 1
+          example: 5
+        travelers:
+          type: integer
+          minimum: 1
+          default: 1
+          example: 1
+        budget:
+          type: number
+          minimum: 0
+          example: 2500
+        currency:
+          type: string
+          default: USD
+          example: USD
+        preferences:
+          type: string
+          example: food and museums
+        include_car:
+          type: boolean
+          default: false
+          description: Also pick the cheapest rental car in the destination city (charged per day for the whole trip)
+          example: false
+    Recommendation:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 5
+        summary:
+          type: string
+          example: Fly ANA NH 177 to Tokyo, stay at Hotel Gracery Shinjuku for 5 nights...
+        selection:
+          type: object
+          properties:
+            flight_id:
+              type: integer
+              example: 2
+            hotel_id:
+              type: integer
+              example: 1
+            activity_ids:
+              type: array
+              items:
+                type: integer
+              example:
+                - 2
+                - 3
+                - 1
+            car_rental_id:
+              type:
+                - integer
+                - "null"
+              example: null
+        breakdown:
+          type: object
+          description: Computed in code by the LLM service, never by the model
+          properties:
+            flights:
+              type: number
+              example: 912
+            hotel:
+              type: number
+              example: 825
+            activities:
+              type: number
+              example: 97
+            car_rental:
+              type: number
+              example: 0
+        total:
+          type: number
+          example: 1834
+        budget:
+          type: number
+          example: 2500
+        within_budget:
+          type: boolean
+          example: true
+        source:
+          type: string
+          enum:
+            - llm
+            - stub
+          description: llm = the model chose the items, stub = chosen by plain rules
+          example: stub
+        model:
+          type: string
+          example: stub
+        currency:
+          type: string
+          example: USD
+        remaining:
+          type: number
+          example: 666
+    SettlementReport:
+      type: object
+      properties:
+        balances:
+          type: array
+          items:
+            type: object
+            properties:
+              member:
+                type: string
+                example: Alice
+              balance:
+                type: number
+                example: 156.67
+        transfers:
+          type: array
+          items:
+            type: object
+            properties:
+              from:
+                type: string
+                example: You
+              to:
+                type: string
+                example: Alice
+              amount:
+                type: number
+                example: 53.34
   responses:
     BadRequest:
       description: The request is missing or has an invalid parameter
@@ -2160,3 +2372,5 @@ tags:
   - name: Car rentals
   - name: Activities
   - name: Advice
+  - name: Planned
+    description: Designed for Phase III; not implemented yet

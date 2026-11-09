@@ -8,6 +8,7 @@ const { initTable } = require('./src/crud');
 const { createApp } = require('./src/app');
 const resource = require('./src/resource');
 const { hooks } = require('./src/llm');
+const { recommendRouter } = require('./src/recommend');
 const SERVICE_NAME = 'llm-service';
 const PORT = Number(process.env.PORT) || 3008;
 
@@ -20,7 +21,7 @@ async function main() {
         ttlSeconds: Number(process.env.CACHE_TTL_SECONDS) || 60,
     });
 
-    const app = createApp({ pool, cache, resource, hooks: hooks, serviceName: SERVICE_NAME });
+    const app = createApp({ pool, cache, resource, hooks: hooks, serviceName: SERVICE_NAME, extend: recommendRouter(pool) });
     const server = app.listen(PORT, () => console.log(`${SERVICE_NAME} listening on port ${PORT}`));
 
     // docker stop sends SIGTERM: finish open requests, then close connections

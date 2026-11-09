@@ -9,7 +9,7 @@ const swaggerUi = require('swagger-ui-express');
 const YAML = require('yaml');
 const { createCrudRouter } = require('./crud');
 
-function createApp({ pool, cache, resource, hooks, serviceName }) {
+function createApp({ pool, cache, resource, hooks, serviceName, extend }) {
     const app = express();
     app.disable('x-powered-by');
     app.use(express.json());
@@ -29,6 +29,8 @@ function createApp({ pool, cache, resource, hooks, serviceName }) {
     app.use('/docs', swaggerUi.serve, swaggerUi.setup(YAML.parse(fs.readFileSync(specPath, 'utf8'))));
     app.get('/openapi.yaml', (req, res) => res.type('application/yaml').sendFile(specPath));
 
+    // extra routes (e.g. POST /api/advice/recommendations) go first so they win over /:id
+    if (extend) app.use(resource.path, extend);
     app.use(resource.path, createCrudRouter(resource, pool, cache, hooks));
 
     // 404 for anything else
