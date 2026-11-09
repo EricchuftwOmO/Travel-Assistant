@@ -1,6 +1,4 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - Hotel Service: the hotel resource (fields, filters, sample data).
-// crud.js builds the table, validation and routes from this one definition.
+// The hotel resource: fields, filters and sample data.
 
 module.exports = {
     name: 'Hotel',

@@ -1,6 +1,4 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - shared error type. Every error leaves the service in the
-// same JSON shape the gateway uses: { error: { code, message, details } }
+// Error type; responses use { error: { code, message, details } }, like the gateway.
 
 class HttpError extends Error {
     constructor(status, code, message, details) {

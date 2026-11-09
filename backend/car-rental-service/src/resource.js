@@ -1,6 +1,4 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - Car Rental Service: the car rental resource (fields, filters, sample data).
-// crud.js builds the table, validation and routes from this one definition.
+// The car rental resource: fields, filters and sample data.
 
 const CAR_TYPES = ['economy', 'compact', 'suv', 'van', 'luxury'];
 

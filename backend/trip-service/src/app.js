@@ -1,5 +1,4 @@
-// Builds the Express app: health check, API docs, routes, and error handling.
-// server.js prepares the database and starts listening.
+// Builds the Express app. server.js prepares the database and starts listening.
 
 const fs = require('fs');
 const path = require('path');
@@ -16,11 +15,9 @@ const apiSpec = YAML.parse(fs.readFileSync(specPath, 'utf8'));
 const app = express();
 app.disable('x-powered-by');
 
-// Middleware
 // CORS is handled by the API gateway, the only service the browser talks to.
 app.use(express.json());
 
-// Liveness and database check (the gateway's /api/health calls this)
 app.get('/health', async (req, res) => {
   try {
     await db.query('SELECT 1');
@@ -30,14 +27,11 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// API documentation: Swagger UI at /docs, raw file at /openapi.yaml
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(apiSpec));
 app.get('/openapi.yaml', (req, res) => res.type('application/yaml').sendFile(specPath));
 
-// Routes
 app.use('/api', routes);
 
-// Error handling
 app.use(notFound);
 app.use(errorHandler);
 

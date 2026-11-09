@@ -1,6 +1,4 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - API Gateway
-// Entry point: loads the configuration and starts the gateway
+// Entry point: loads the configuration and starts the gateway.
 
 const { loadConfig } = require('./src/config');
 const { createApp } = require('./src/app');
@@ -15,7 +13,6 @@ const server = app.listen(config.port, () => {
     }
 });
 
-// Stop cleanly when Docker stops the container
 for (const signal of ['SIGTERM', 'SIGINT']) {
     process.on(signal, () => server.close(() => process.exit(0)));
 }

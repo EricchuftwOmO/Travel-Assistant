@@ -1,12 +1,10 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - LLM Service: tests for the recommendation logic and route.
-// Run: npm test   (no database, Redis or API key needed: upstream services are faked)
+// Tests for the recommendation logic and route. Upstream services are faked; no database, Redis or API key needed.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 
-delete process.env.GROQ_API_KEY;   // always test the rule-based path
+delete process.env.GROQ_API_KEY;
 
 const { validateRequest, computeCost, selectByRules, resolveChoice } = require('../src/recommend');
 
@@ -30,7 +28,6 @@ const activities = [
     { id: 4, name: 'Night market', price: 15, rating: 4.5, currency: 'USD' },
 ];
 
-// ---------- validation
 test('validateRequest fills defaults and normalises the airport code', () => {
     const r = validateRequest({ user_id: 'u1', destination: 'Tokyo', budget: 2500, origin: 'sea' });
     assert.equal(r.nights, 3); assert.equal(r.travelers, 1); assert.equal(r.currency, 'USD'); assert.equal(r.origin, 'SEA');
@@ -45,7 +42,6 @@ test('validateRequest lists every problem at once', () => {
     });
 });
 
-// ---------- cost is computed in code
 test('computeCost adds flights x travelers, hotel x nights and activities x travelers', () => {
     const cost = computeCost({ flight: flights[1], hotel: hotels[0], activities: [activities[1], activities[2], activities[0]] },
         { nights: 5, travelers: 1, budget: 2500 });
@@ -65,15 +61,14 @@ test('computeCost multiplies per-person items by travelers', () => {
 test('a rental car is charged per day for the whole trip, once (not per traveler)', () => {
     const request = { nights: 3, travelers: 2, budget: 5000 };
     const sel = selectByRules({ flights, hotels, activities, cars }, request);
-    assert.equal(sel.car.id, 1);                                  // cheapest car
-    assert.equal(computeCost(sel, request).breakdown.car_rental, 183);   // 61 x 3 days
-    assert.equal(selectByRules({ flights, hotels, activities }, request).car, null);   // no car unless asked
+    assert.equal(sel.car.id, 1);
+    assert.equal(computeCost(sel, request).breakdown.car_rental, 183);
+    assert.equal(selectByRules({ flights, hotels, activities }, request).car, null);
 });
 
-// ---------- rule-based selection
 test('selectByRules picks the cheapest flight and the best hotel that fits the budget', () => {
     const sel = selectByRules({ flights, hotels, activities }, { nights: 5, travelers: 1, budget: 2500 });
-    assert.equal(sel.flight.id, 1);                // cheapest flight
+    assert.equal(sel.flight.id, 1);
     assert.equal(sel.hotel.id, 1);                 // Tokyo Station Hotel (5 x 410) would not fit; best fitting is Gracery
     assert.equal(sel.activities.length, 3);
     assert.ok(computeCost(sel, { nights: 5, travelers: 1, budget: 2500 }).within_budget);
@@ -93,7 +88,6 @@ test('resolveChoice rejects ids that are not in the results (the model cannot in
     assert.equal(ok.activities[0].name, 'Tsukiji tour');
 });
 
-// ---------- the route, with fake Flight / Hotel / Activity services and a fake database
 function fakeService(handler) {
     return new Promise((resolve) => {
         const server = http.createServer((req, res) => {
@@ -140,9 +134,9 @@ test('POST /api/advice/recommendations builds, costs and saves a recommendation 
         assert.equal(body.within_budget, true);
         assert.equal(body.total, body.breakdown.flights + body.breakdown.hotel + body.breakdown.activities);
         assert.equal(body.selection.flight_id, 1);
-        assert.equal(body.source, 'stub');         // no API key in tests
+        assert.equal(body.source, 'stub');
         assert.match(body.summary, /Total \$/);
-        assert.equal(app.saved.length, 1);          // saved exactly once
+        assert.equal(app.saved.length, 1);
     } finally { await app.close(); }
 });
 

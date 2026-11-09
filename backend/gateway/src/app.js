@@ -1,6 +1,4 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - API Gateway
-// Builds the Express app: the single entry point for the frontend
+// Builds the Express app: the single entry point for the frontend.
 
 const express = require('express');
 const { requestId, cors, requestLogger } = require('./middleware');
@@ -20,13 +18,10 @@ function createApp(config) {
     if (config.logRequests) app.use(requestLogger);
     app.use(cors(config.corsOrigins));
 
-    // The gateway's own liveness check (used by Docker)
     app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-    // Combined health check of all services
     app.get('/api/health', healthHandler(config));
 
-    // Login check for every /api route that is not public (see auth.js)
     app.use(requireLogin(config.jwtSecret));
 
     // Forward /api/* to the owning service. No body parser: bodies are streamed as-is.

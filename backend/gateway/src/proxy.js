@@ -1,15 +1,11 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - API Gateway
-// Forwards a request to the owning service unchanged, using http-proxy-middleware.
-// A service that is down gives 502 UPSTREAM_UNAVAILABLE; one that doesn't answer
-// in time gives 504 UPSTREAM_TIMEOUT.
+// Forwards a request to the owning service unchanged (http-proxy-middleware).
+// A service that is down gives 502 UPSTREAM_UNAVAILABLE; one that is too slow gives 504 UPSTREAM_TIMEOUT.
 
 const http = require('node:http');
 const https = require('node:https');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const { sendError } = require('./errors');
 
-// Create the proxy for one route (called once at startup, not per request)
 function createProxy(route) {
     // Reuse connections to the service. Without an agent the library
     // sends "Connection: close" and opens a new connection every request.
@@ -19,8 +15,8 @@ function createProxy(route) {
     return createProxyMiddleware({
         target: route.url,
         agent,
-        changeOrigin: true,          // Host header = the service, not the gateway
-        xfwd: true,                  // add X-Forwarded-For / -Host / -Proto / -Port
+        changeOrigin: true,
+        xfwd: true,
         proxyTimeout: route.timeoutMs,
 
         on: {

@@ -1,8 +1,5 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - API Gateway
 // Uniform error responses: { error: { code, message, details? } }
 
-// An error the gateway itself reports (for example, a service that is down)
 class GatewayError extends Error {
     constructor(status, code, message, details) {
         super(message);
@@ -18,14 +15,11 @@ function sendError(res, status, code, message, details) {
     res.status(status).json({ error });
 }
 
-// 404: no service owns this path
 function notFound(req, res) {
     sendError(res, 404, 'NOT_FOUND', `Endpoint not found: ${req.method} ${req.path}`);
 }
 
-// Central error handler (Express recognizes it by its 4 parameters)
 function errorHandler(err, req, res, next) {
-    // If the response has already started, let Express close the connection
     if (res.headersSent) return next(err);
 
     if (err instanceof GatewayError) {

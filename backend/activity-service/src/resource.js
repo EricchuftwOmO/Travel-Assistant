@@ -1,6 +1,4 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - Activity Service: the activity resource (fields, filters, sample data).
-// crud.js builds the table, validation and routes from this one definition.
+// The activity resource: fields, filters and sample data.
 
 const CATEGORIES = ['sightseeing', 'food', 'outdoors', 'museum', 'nightlife', 'shopping'];
 

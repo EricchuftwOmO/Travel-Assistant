@@ -1,6 +1,4 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - API Gateway tests (run with: npm test)
-// Starts small stub services on random ports and sends requests through the gateway.
+// Gateway tests: stub services on random ports, requests sent through the gateway.
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -10,7 +8,6 @@ const { createApp } = require('../src/app');
 
 const SECRET = 'test-secret';
 
-// Sign an HS256 token like the trip service does
 function makeToken(payload, secret = SECRET) {
     const enc = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
     const head = `${enc({ alg: 'HS256', typ: 'JWT' })}.${enc(payload)}`;
@@ -18,15 +15,12 @@ function makeToken(payload, secret = SECRET) {
 }
 const goodToken = makeToken({ userId: 7, exp: Math.floor(Date.now() / 1000) + 3600 });
 
-// Most tests are about routing, so they send a valid token by default
 const rawFetch = fetch;
 const fetchAs = (url, opts = {}) =>
     rawFetch(url, { ...opts, headers: { Authorization: `Bearer ${goodToken}`, ...opts.headers } });
 
-
 const servers = [];
 
-// Start a server on a random free port and return its base URL
 function listen(handler) {
     return new Promise((resolve) => {
         const server = http.createServer(handler);
@@ -37,7 +31,6 @@ function listen(handler) {
     });
 }
 
-// A stub service that echoes what it received, so tests can see what the gateway forwarded
 function echoService(name) {
     return listen((req, res) => {
         if (req.url === '/health') {
@@ -53,7 +46,6 @@ function echoService(name) {
     });
 }
 
-// A URL where nothing is listening (start a server, note its port, close it)
 async function deadUrl() {
     const url = await listen(() => {});
     const server = servers.pop();
@@ -254,7 +246,6 @@ test('login check: public routes need no token', async () => {
         assert.equal(res.status, 200, path);
         assert.equal((await res.json()).service, service);
     }
-    // writes to the catalogs are not public
     assert.equal((await rawFetch(`${gateway}/api/flights`, { method: 'POST' })).status, 401);
 });
 

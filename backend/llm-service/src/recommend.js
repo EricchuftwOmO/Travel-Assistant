@@ -1,15 +1,5 @@
-// TCSS 559 Autumn 2026
-// Travel Assistant - LLM Service: trip recommendation summary.
-//
-//   POST /api/advice/recommendations
-//
-// The LLM service is the application's AI component. To build a recommendation it
-//   1. validates the request,
-//   2. calls the Flight, Hotel and Activity services directly (not through the gateway),
-//   3. lets the language model choose among the results (or, without a GROQ_API_KEY or if
-//      the model's choice is unusable, picks with plain rules),
-//   4. adds up the cost IN CODE and checks it against the budget (the model never does the arithmetic),
-//   5. saves the summary as advice and returns it with the prices and the ids it used.
+// POST /api/advice/recommendations: calls the Flight, Hotel and Activity services directly, lets the model pick
+// (or plain rules if there is no key or the pick is unusable), and adds up the cost in code, never in the model.
 
 const express = require('express');
 const Groq = require('groq-sdk');
@@ -27,8 +17,6 @@ const CITY_AIRPORTS = {
 const AIRPORT_CITY = Object.fromEntries(Object.entries(CITY_AIRPORTS).flatMap(([city, codes]) => codes.map((c) => [c, city])));
 
 const round2 = (n) => Math.round(n * 100) / 100;
-
-// ---------------------------------------------------------------- 1. validation
 
 function validateRequest(body) {
     if (body === null || typeof body !== 'object' || Array.isArray(body)) throw badRequest('Request body must be a JSON object');
@@ -71,8 +59,6 @@ function validateRequest(body) {
     return request;
 }
 
-// ---------------------------------------------------------------- 2. calls to the other services
-
 const serviceUrl = (name, fallback) => process.env[name] || fallback;
 
 async function getList(label, baseUrl, path, params) {
@@ -111,8 +97,6 @@ async function gather(request) {
     const sameCurrency = (x) => !x.currency || x.currency === request.currency;
     return { city, flights: flights.filter(sameCurrency), hotels: hotels.filter(sameCurrency), activities: activities.filter(sameCurrency), cars: cars.filter(sameCurrency) };
 }
-
-// ---------------------------------------------------------------- 3. choosing and costing (plain code)
 
 // Cost of a chosen package. Always computed here, never by the model.
 function computeCost({ flight, hotel, car, activities }, { nights, travelers, budget }) {
@@ -178,8 +162,6 @@ function templateSummary(request, selection, cost, city) {
     return `${trip} ${money}`;
 }
 
-// ---------------------------------------------------------------- 4. the language model
-
 async function askModel(request, lists) {
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY, timeout: Number(process.env.LLM_TIMEOUT_MS) || 30000, maxRetries: 0 });
     const compact = {
@@ -205,8 +187,6 @@ async function askModel(request, lists) {
     try { return JSON.parse(text); } catch { return null; }
 }
 
-// ---------------------------------------------------------------- the route
-
 function recommendRouter(pool) {
     const router = express.Router();
 
@@ -226,7 +206,7 @@ function recommendRouter(pool) {
                 summary = typeof answer.summary === 'string' && answer.summary.trim() ? answer.summary.trim() : null;
             }
         }
-        if (!selection) selection = selectByRules(lists, request);   // no key, bad choice, or over budget
+        if (!selection) selection = selectByRules(lists, request);
 
         const cost = computeCost(selection, request);
         summary = summary ? `${summary} Total $${cost.total} of your $${request.budget} budget.` : templateSummary(request, selection, cost, lists.city);
