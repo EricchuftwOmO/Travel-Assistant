@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: travel-app-db
+    environment:
+      POSTGRES_USER: travel
+      POSTGRES_PASSWORD: travel_dev
+      POSTGRES_DB: travel_app
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data # 1. 將容器內的資料目錄綁定到 named volume
+      - ./backend/data/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro  # 讓資料庫在「第一次建立」時，自動依序幫你建立資料表（Schema）並填入測試假資料（Seed）。
+      - ./backend/data/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U travel -d travel_app"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata: # 2. 在全域宣告這個名為 pgdata 的 volume
