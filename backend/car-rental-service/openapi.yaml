@@ -1,0 +1,473 @@
+openapi: 3.1.0
+info:
+  title: Travel Assistant - Car rental Service
+  version: 1.0.0
+  description: 'Rental cars a traveler can pick for a trip. Cached in Redis for GET requests. Errors use {
+    "error": { "code", "message", "details" } }.'
+servers:
+  - url: http://localhost:3006
+    description: car-rental-service (published on localhost for development; other clients go through the gateway
+      on port 8080)
+tags:
+  - name: Car rentals
+  - name: Health
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Service and database health check
+      operationId: getCarrentalServiceHealth
+      responses:
+        "200":
+          description: Service and database are up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: car-rental-service
+                  cache:
+                    type: string
+                    enum:
+                      - redis
+                      - off
+        "503":
+          description: Database unavailable
+  /api/car-rentals:
+    get:
+      tags:
+        - Car rentals
+      summary: List car rentals
+      operationId: listCarrentals
+      description: "All filters are optional and can be combined. Responses are cached in Redis (see the X-Cache
+        header: HIT or MISS)."
+      parameters:
+        - name: city
+          in: query
+          description: Pickup city (equals (ignore case))
+          schema:
+            type: string
+        - name: carType
+          in: query
+          description: Car category (equals)
+          schema:
+            type: string
+            enum:
+              - economy
+              - compact
+              - suv
+              - van
+              - luxury
+        - name: minSeats
+          in: query
+          description: Fewest seats (>=)
+          schema:
+            type: integer
+        - name: maxPrice
+          in: query
+          description: Highest price per day (<=)
+          schema:
+            type: number
+        - name: available
+          in: query
+          description: Only available (true) or unavailable (false) cars (equals)
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - id
+              - price_per_day
+              - seats
+            default: id
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: asc
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Page size
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Rows to skip
+      responses:
+        "200":
+          description: A page of car rentals
+          headers:
+            X-Total-Count:
+              description: Rows matching the filters
+              schema:
+                type: integer
+            X-Cache:
+              description: HIT if served from Redis
+              schema:
+                type: string
+                enum:
+                  - HIT
+                  - MISS
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - count
+                  - total
+                  - data
+                properties:
+                  count:
+                    type: integer
+                  total:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Carrental"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    post:
+      tags:
+        - Car rentals
+      summary: Create a car rental
+      operationId: createCarrental
+      description: Send every required field.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CarrentalInput"
+      responses:
+        "201":
+          description: Car rental created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Carrental"
+          headers:
+            Location:
+              description: URL of the new record
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/car-rentals/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        description: Car rental ID
+    get:
+      tags:
+        - Car rentals
+      summary: Get one car rental
+      operationId: getCarrental
+      responses:
+        "200":
+          description: The car rental
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Carrental"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags:
+        - Car rentals
+      summary: Replace a car rental
+      operationId: replaceCarrental
+      description: Send every required field. Optional fields left out go back to their default (or null).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CarrentalInput"
+      responses:
+        "200":
+          description: The updated car rental
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Carrental"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags:
+        - Car rentals
+      summary: Update some fields of a car rental
+      operationId: updateCarrental
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CarrentalPatch"
+      responses:
+        "200":
+          description: The updated car rental
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Carrental"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - Car rentals
+      summary: Delete a car rental
+      operationId: deleteCarrental
+      responses:
+        "204":
+          description: Deleted, no content
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+components:
+  schemas:
+    Carrental:
+      type: object
+      required:
+        - id
+        - company
+        - car_type
+        - model
+        - pickup_city
+        - price_per_day
+      properties:
+        id:
+          type: integer
+          example: 1
+        company:
+          type: string
+          example: Hertz
+        car_type:
+          type: string
+          enum:
+            - economy
+            - compact
+            - suv
+            - van
+            - luxury
+          example: compact
+        model:
+          type: string
+          example: Toyota Corolla
+        pickup_city:
+          type: string
+          example: Seattle
+        seats:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 15
+          default: 5
+          example: 5
+        transmission:
+          type:
+            - string
+            - "null"
+          enum:
+            - automatic
+            - manual
+            - null
+          default: automatic
+          example: automatic
+        price_per_day:
+          type: number
+          minimum: 0
+          example: 54
+        currency:
+          type:
+            - string
+            - "null"
+          maxLength: 3
+          default: USD
+          example: USD
+        available:
+          type:
+            - boolean
+            - "null"
+          default: true
+          example: true
+        created_at:
+          type: string
+          format: date-time
+    CarrentalInput:
+      type: object
+      additionalProperties: false
+      required:
+        - company
+        - car_type
+        - model
+        - pickup_city
+        - price_per_day
+      properties:
+        company:
+          type: string
+          example: Hertz
+        car_type:
+          type: string
+          enum:
+            - economy
+            - compact
+            - suv
+            - van
+            - luxury
+          example: compact
+        model:
+          type: string
+          example: Toyota Corolla
+        pickup_city:
+          type: string
+          example: Seattle
+        seats:
+          type: integer
+          minimum: 1
+          maximum: 15
+          default: 5
+          example: 5
+        transmission:
+          type: string
+          enum:
+            - automatic
+            - manual
+          default: automatic
+          example: automatic
+        price_per_day:
+          type: number
+          minimum: 0
+          example: 54
+        currency:
+          type: string
+          maxLength: 3
+          default: USD
+          example: USD
+        available:
+          type: boolean
+          default: true
+          example: true
+    CarrentalPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Any subset of the fields
+      properties:
+        company:
+          type: string
+          example: Hertz
+        car_type:
+          type: string
+          enum:
+            - economy
+            - compact
+            - suv
+            - van
+            - luxury
+          example: compact
+        model:
+          type: string
+          example: Toyota Corolla
+        pickup_city:
+          type: string
+          example: Seattle
+        seats:
+          type: integer
+          minimum: 1
+          maximum: 15
+          default: 5
+          example: 5
+        transmission:
+          type: string
+          enum:
+            - automatic
+            - manual
+          default: automatic
+          example: automatic
+        price_per_day:
+          type: number
+          minimum: 0
+          example: 54
+        currency:
+          type: string
+          maxLength: 3
+          default: USD
+          example: USD
+        available:
+          type: boolean
+          default: true
+          example: true
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              example: NOT_FOUND
+            message:
+              type: string
+            details: {}
+  responses:
+    BadRequest:
+      description: Invalid or missing field or query parameter (BAD_REQUEST). "details" lists every invalid field.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: BAD_REQUEST
+              message: Validation failed
+              details:
+                - field: name
+                  message: is required
+    NotFound:
+      description: Car rental not found (NOT_FOUND)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BadGateway:
+      description: The language model failed (LLM_UNAVAILABLE)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

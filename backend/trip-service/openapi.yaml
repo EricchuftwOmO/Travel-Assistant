@@ -1,0 +1,1086 @@
+openapi: 3.0.3
+info:
+  title: Travel Planner API
+  version: 1.0.0
+  license:
+    name: ISC
+    url: https://opensource.org/license/isc-license-txt
+  description: |
+    RESTful API for managing user accounts, trips, and day-by-day itineraries
+    in a travel planning app.
+
+    **Itineraries:** every trip has one itinerary day per date, created and
+    kept in step with the trip's dates automatically. Each day holds an
+    ordered list of places.
+
+    **Authentication:** register or log in to receive a JWT, then send it as
+    `Authorization: Bearer <token>`. Tokens expire after 1 hour. In this page,
+    click **Authorize** and paste the token (without the word `Bearer`).
+
+    **Privacy:** an account can only reach its own data. The account comes from
+    the token, so user IDs never appear in a URL, and another user's trip
+    responds with `404`, the same as a trip that does not exist.
+servers:
+  - url: /api
+    description: This server
+tags:
+  - name: Auth
+    description: Create an account and obtain a token
+  - name: Users
+    description: Manage the signed-in user's own account
+  - name: Trips
+    description: Create, find, and manage the signed-in user's own trips
+  - name: Itineraries
+    description: Plan the places of each day of a trip
+  - name: Places
+    description: Browse the places that can be added to an itinerary
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new account
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              name: Frank Lee
+              email: frank@example.com
+              password: Password123!
+      responses:
+        '201':
+          description: Account created. The response includes a token, so no separate login is needed.
+          headers:
+            Location:
+              description: URL of the new account
+              schema:
+                type: string
+              example: /api/users/me
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              example:
+                user:
+                  id: 6
+                  name: Frank Lee
+                  email: frank@example.com
+                  createdAt: '2026-11-06T18:30:00.000Z'
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjZ9.signature
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/EmailConflict'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: alice@example.com
+              password: Password123!
+      responses:
+        '200':
+          description: Credentials accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              example:
+                user:
+                  id: 1
+                  name: Alice Chen
+                  email: alice@example.com
+                  createdAt: '2026-11-06T18:00:00.000Z'
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjF9.signature
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: The email or password is incorrect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: UNAUTHORIZED
+                  message: Email or password is incorrect
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get my account
+      operationId: getMe
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The signed-in user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+              example:
+                id: 1
+                name: Alice Chen
+                email: alice@example.com
+                createdAt: '2026-11-06T18:00:00.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    put:
+      tags: [Users]
+      summary: Update my account
+      description: Replaces the name and email. The password cannot be changed through this endpoint.
+      operationId: updateMe
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileRequest'
+            example:
+              name: Alice Chen-Wu
+              email: alice@example.com
+      responses:
+        '200':
+          description: Account updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+              example:
+                id: 1
+                name: Alice Chen-Wu
+                email: alice@example.com
+                createdAt: '2026-11-06T18:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/EmailConflict'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags: [Users]
+      summary: Delete my account
+      description: Permanently deletes the account and all of its trips. Existing tokens stop working immediately.
+      operationId: deleteMe
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Account and trips deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /trips:
+    post:
+      tags: [Trips]
+      summary: Create a trip
+      description: |
+        The owner is always the signed-in user. An `ownerId` in the body is ignored.
+        One empty itinerary day is created for every date of the trip, and a
+        trip can last at most 90 days.
+      operationId: createTrip
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TripRequest'
+            example:
+              title: Rome Getaway
+              destination: Rome
+              startDate: '2027-09-01'
+              endDate: '2027-09-05'
+      responses:
+        '201':
+          description: Trip created
+          headers:
+            Location:
+              description: URL of the new trip
+              schema:
+                type: string
+              example: /api/trips/16
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trip'
+              example:
+                id: 16
+                ownerId: 1
+                title: Rome Getaway
+                destination: Rome
+                startDate: '2027-09-01'
+                endDate: '2027-09-05'
+                createdAt: '2026-11-06T18:30:00.000Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    get:
+      tags: [Trips]
+      summary: List my trips
+      description: |
+        Returns the signed-in user's trips, ordered by start date. `search` and
+        `status` are optional and can be combined.
+      operationId: listTrips
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          description: Keep trips whose title contains this text, ignoring case. A blank value is ignored.
+          schema:
+            type: string
+            maxLength: 120
+          example: japan
+        - name: status
+          in: query
+          description: >-
+            `upcoming` keeps trips that have not ended yet, including trips in
+            progress. `past` keeps trips that have ended. Dates are compared
+            using the database server's current date.
+          schema:
+            type: string
+            enum: [upcoming, past]
+      responses:
+        '200':
+          description: The matching trips. The list is empty when nothing matches.
+          headers:
+            X-Total-Count:
+              description: Number of trips returned
+              schema:
+                type: integer
+              example: 2
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Trip'
+              example:
+                - id: 5
+                  ownerId: 1
+                  title: Japan Spring Getaway
+                  destination: Osaka
+                  startDate: '2026-04-02'
+                  endDate: '2026-04-09'
+                  createdAt: '2026-11-06T18:00:00.000Z'
+                - id: 1
+                  ownerId: 1
+                  title: Japan Trip
+                  destination: Tokyo
+                  startDate: '2027-01-28'
+                  endDate: '2027-02-03'
+                  createdAt: '2026-11-06T18:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /trips/{tripId}:
+    parameters:
+      - $ref: '#/components/parameters/TripId'
+    get:
+      tags: [Trips]
+      summary: Get one of my trips
+      operationId: getTrip
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The requested trip
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trip'
+              example:
+                id: 1
+                ownerId: 1
+                title: Japan Trip
+                destination: Tokyo
+                startDate: '2027-01-28'
+                endDate: '2027-02-03'
+                createdAt: '2026-11-06T18:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/TripNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    put:
+      tags: [Trips]
+      summary: Update one of my trips
+      description: |
+        Replaces the trip's editable fields, so all of them are required.
+
+        The itinerary days follow the new dates: every day is re-dated from the
+        new start date, extra days are added when the trip gets longer, and
+        trailing days are removed when it gets shorter. A day that still has
+        places is never removed; the request fails with `409` instead, and
+        nothing changes.
+      operationId: updateTrip
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TripRequest'
+            example:
+              title: Japan Winter Trip
+              destination: Tokyo
+              startDate: '2027-01-28'
+              endDate: '2027-02-05'
+      responses:
+        '200':
+          description: Trip updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trip'
+              example:
+                id: 1
+                ownerId: 1
+                title: Japan Winter Trip
+                destination: Tokyo
+                startDate: '2027-01-28'
+                endDate: '2027-02-05'
+                createdAt: '2026-11-06T18:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/TripNotFound'
+        '409':
+          $ref: '#/components/responses/DaysInUse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags: [Trips]
+      summary: Delete one of my trips
+      operationId: deleteTrip
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Trip deleted
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/TripNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /trips/{tripId}/itineraries:
+    parameters:
+      - $ref: '#/components/parameters/TripId'
+    get:
+      tags: [Itineraries]
+      summary: List the days of one of my trips
+      operationId: listDays
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Every day of the trip in order, with how many places each one has
+          headers:
+            X-Total-Count:
+              description: Number of days returned
+              schema:
+                type: integer
+              example: 7
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DaySummary'
+              example:
+                - id: 1
+                  tripId: 1
+                  dayNumber: 1
+                  date: '2027-01-28'
+                  placeCount: 2
+                - id: 2
+                  tripId: 1
+                  dayNumber: 2
+                  date: '2027-01-29'
+                  placeCount: 3
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/TripNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /trips/{tripId}/itineraries/{dayNumber}:
+    parameters:
+      - $ref: '#/components/parameters/TripId'
+      - $ref: '#/components/parameters/DayNumber'
+    get:
+      tags: [Itineraries]
+      summary: Get one day's itinerary
+      operationId: getDay
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The day with its places in visiting order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Day'
+              example:
+                id: 1
+                tripId: 1
+                dayNumber: 1
+                date: '2027-01-28'
+                items:
+                  - id: 1
+                    position: 1
+                    place:
+                      id: 1
+                      googlePlaceId: null
+                      name: Senso-ji Temple
+                      city: Tokyo
+                      category: attraction
+                  - id: 2
+                    position: 2
+                    place:
+                      id: 2
+                      googlePlaceId: null
+                      name: Tokyo Skytree
+                      city: Tokyo
+                      category: attraction
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/DayNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /trips/{tripId}/itineraries/{dayNumber}/items:
+    parameters:
+      - $ref: '#/components/parameters/TripId'
+      - $ref: '#/components/parameters/DayNumber'
+    post:
+      tags: [Itineraries]
+      summary: Add a place to a day
+      description: |
+        Inserts the place at `position`. The place already at that position,
+        and every place after it, moves down by one. Leave out `position` to add
+        the place at the end of the day. The same place may appear more than once.
+      operationId: addItem
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewItemRequest'
+            example:
+              placeId: 5
+              position: 2
+      responses:
+        '201':
+          description: Place added
+          headers:
+            Location:
+              description: URL of the new itinerary item
+              schema:
+                type: string
+              example: /api/trips/1/itineraries/1/items/15
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItineraryItem'
+              example:
+                id: 15
+                position: 2
+                place:
+                  id: 5
+                  googlePlaceId: null
+                  name: Tsukiji Outer Market
+                  city: Tokyo
+                  category: food
+        '400':
+          description: >-
+            The body is invalid, `placeId` does not match a place, or `position`
+            is past the end of the day
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: BAD_REQUEST
+                  message: Request validation failed
+                  details:
+                    - position must be between 1 and 3
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/DayNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags: [Itineraries]
+      summary: Remove every place from a day
+      description: Empties the day. The day itself remains, because the trip's dates define its days.
+      operationId: clearItems
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: The day is now empty
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/DayNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /trips/{tripId}/itineraries/{dayNumber}/items/order:
+    parameters:
+      - $ref: '#/components/parameters/TripId'
+      - $ref: '#/components/parameters/DayNumber'
+    put:
+      tags: [Itineraries]
+      summary: Reorder a day's places
+      description: |
+        `itemIds` lists every item of the day exactly once, in the new visiting
+        order. The first ID gets position 1.
+      operationId: reorderItems
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemOrderRequest'
+            example:
+              itemIds: [2, 1]
+      responses:
+        '200':
+          description: The day in its new order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Day'
+              example:
+                id: 1
+                tripId: 1
+                dayNumber: 1
+                date: '2027-01-28'
+                items:
+                  - id: 2
+                    position: 1
+                    place:
+                      id: 2
+                      googlePlaceId: null
+                      name: Tokyo Skytree
+                      city: Tokyo
+                      category: attraction
+                  - id: 1
+                    position: 2
+                    place:
+                      id: 1
+                      googlePlaceId: null
+                      name: Senso-ji Temple
+                      city: Tokyo
+                      category: attraction
+        '400':
+          description: The body is invalid, or `itemIds` does not list exactly the day's items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: BAD_REQUEST
+                  message: Request validation failed
+                  details:
+                    - itemIds must list every item of this day exactly once
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/DayNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /trips/{tripId}/itineraries/{dayNumber}/items/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/TripId'
+      - $ref: '#/components/parameters/DayNumber'
+      - $ref: '#/components/parameters/ItemId'
+    get:
+      tags: [Itineraries]
+      summary: Get one itinerary item
+      operationId: getItem
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The requested item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItineraryItem'
+              example:
+                id: 1
+                position: 1
+                place:
+                  id: 1
+                  googlePlaceId: null
+                  name: Senso-ji Temple
+                  city: Tokyo
+                  category: attraction
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/ItemNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags: [Itineraries]
+      summary: Remove a place from a day
+      description: Every place after the removed one moves up by one, so positions stay 1, 2, 3, and so on.
+      operationId: removeItem
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Place removed
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/ItemNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /places:
+    get:
+      tags: [Places]
+      summary: List places
+      description: |
+        Returns the places that can be added to an itinerary, ordered by city and
+        name. These are sample places stored in the database; `googlePlaceId` is
+        reserved for a future Google Places integration.
+      operationId: listPlaces
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: city
+          in: query
+          description: Keep places in this city. The whole name must match, ignoring case.
+          schema:
+            type: string
+            maxLength: 120
+          example: tokyo
+        - name: category
+          in: query
+          description: Keep places in this category. The whole name must match, ignoring case.
+          schema:
+            type: string
+            maxLength: 120
+          example: food
+      responses:
+        '200':
+          description: The matching places. The list is empty when nothing matches.
+          headers:
+            X-Total-Count:
+              description: Number of places returned
+              schema:
+                type: integer
+              example: 1
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Place'
+              example:
+                - id: 5
+                  googlePlaceId: null
+                  name: Tsukiji Outer Market
+                  city: Tokyo
+                  category: food
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    TripId:
+      name: tripId
+      in: path
+      required: true
+      description: Trip ID
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 2147483647
+      example: 1
+    DayNumber:
+      name: dayNumber
+      in: path
+      required: true
+      description: Day of the trip, starting at 1 for the start date
+      schema:
+        type: integer
+        minimum: 1
+      example: 1
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      description: Itinerary item ID
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 2147483647
+      example: 1
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Stored in lowercase
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: At least 8 characters and at most 72 bytes
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    ProfileRequest:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 254
+    TripRequest:
+      type: object
+      required: [title, destination, startDate, endDate]
+      properties:
+        title:
+          type: string
+          maxLength: 120
+        destination:
+          type: string
+          maxLength: 120
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          description: Must be on or after startDate
+    User:
+      type: object
+      required: [id, name, email, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        createdAt:
+          type: string
+          format: date-time
+    AuthResponse:
+      type: object
+      required: [user, token]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        token:
+          type: string
+          description: JWT that expires after 1 hour
+    Trip:
+      type: object
+      required: [id, ownerId, title, destination, startDate, endDate, createdAt]
+      properties:
+        id:
+          type: integer
+        ownerId:
+          type: integer
+        title:
+          type: string
+        destination:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        createdAt:
+          type: string
+          format: date-time
+    Place:
+      type: object
+      required: [id, googlePlaceId, name, city, category]
+      properties:
+        id:
+          type: integer
+        googlePlaceId:
+          type: string
+          nullable: true
+          description: Reserved for a future Google Places integration; currently null
+        name:
+          type: string
+        city:
+          type: string
+        category:
+          type: string
+          example: attraction
+    ItineraryItem:
+      type: object
+      required: [id, position, place]
+      properties:
+        id:
+          type: integer
+        position:
+          type: integer
+          description: Visiting order within the day, starting at 1
+        place:
+          $ref: '#/components/schemas/Place'
+    DaySummary:
+      type: object
+      required: [id, tripId, dayNumber, date, placeCount]
+      properties:
+        id:
+          type: integer
+        tripId:
+          type: integer
+        dayNumber:
+          type: integer
+        date:
+          type: string
+          format: date
+        placeCount:
+          type: integer
+          description: Number of places planned for the day
+    Day:
+      type: object
+      required: [id, tripId, dayNumber, date, items]
+      properties:
+        id:
+          type: integer
+        tripId:
+          type: integer
+        dayNumber:
+          type: integer
+        date:
+          type: string
+          format: date
+        items:
+          type: array
+          description: The day's places in visiting order
+          items:
+            $ref: '#/components/schemas/ItineraryItem'
+    NewItemRequest:
+      type: object
+      required: [placeId]
+      properties:
+        placeId:
+          type: integer
+          minimum: 1
+          description: ID from `GET /places`
+        position:
+          type: integer
+          minimum: 1
+          description: Where to insert the place, from 1 to the number of places plus 1. Defaults to the end.
+    ItemOrderRequest:
+      type: object
+      required: [itemIds]
+      properties:
+        itemIds:
+          type: array
+          description: Every item ID of the day, once each, in the new order
+          items:
+            type: integer
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: >-
+                Machine-readable error code, shared with the other services and the
+                gateway: BAD_REQUEST (400), UNAUTHORIZED (401), NOT_FOUND (404),
+                CONFLICT (409), or INTERNAL_ERROR (500).
+              example: NOT_FOUND
+            message:
+              type: string
+            details:
+              type: array
+              description: One entry per problem. Present only on validation errors.
+              items:
+                type: string
+  responses:
+    ValidationError:
+      description: The request has invalid parameters, an invalid body, or malformed JSON
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: BAD_REQUEST
+              message: Request validation failed
+              details:
+                - endDate must be on or after startDate
+    Unauthorized:
+      description: The bearer token is missing, invalid, or expired, or its account was deleted
+      headers:
+        WWW-Authenticate:
+          description: The authentication scheme to use
+          schema:
+            type: string
+          example: Bearer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Token is invalid or expired
+    TripNotFound:
+      description: The trip does not exist or belongs to another user
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Trip not found
+    DayNotFound:
+      description: >-
+        The trip does not exist or belongs to another user (`Trip not found`),
+        or the trip has no such day (`Day not found`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Day not found
+    ItemNotFound:
+      description: The trip, the day, or the item does not exist, or the trip belongs to another user
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Itinerary item not found
+    DaysInUse:
+      description: The new dates would remove days that still have places. Nothing was changed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: CONFLICT
+              message: The new dates would remove days that still have places
+              details:
+                - Day 5 has places; remove them first
+    EmailConflict:
+      description: The email already belongs to an account
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: CONFLICT
+              message: Email is already registered
+    ServerError:
+      description: An unexpected server error occurred
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: Internal server error

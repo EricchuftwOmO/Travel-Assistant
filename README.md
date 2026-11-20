@@ -1,222 +1,101 @@
-# Travel Planner API
+# Travel Assistant: Phase II backend
 
-English | [繁體中文](README.zh-TW.md)
+TCSS 559 Autumn 2026. A travel-planning backend made of small services behind an API gateway, all run with Docker.
 
-A RESTful backend for a travel planning app, built for TCSS 559 Assignment 3. Users create an account, sign in, manage their own trips, and plan each day of a trip with an ordered list of places. The API keeps each account private: a user can only reach their own profile, trips, and itineraries.
+- **Trip service**: accounts (login), trips, day-by-day itineraries, places.
+- **Flight, hotel, car-rental and activity services**: CRUD, filters, PostgreSQL, Redis cache.
+- **LLM service** (the AI part): saves travel advice and builds trip recommendations.
+- **API gateway**: single entry point on port 8080. Checks the login token and routes each request.
 
-## Key Features
+## Run
 
-- **Accounts:** register, log in, and view, update, or delete your own account.
-- **Trips:** full CRUD for the signed-in user's trips.
-- **Search and filtering:** find trips by a keyword in the title, list upcoming or past trips, or combine both.
-- **Day-by-day itineraries:** every trip gets one day per date automatically. Add a place at any position, reorder a day, remove one place, or clear a whole day.
-- **Places:** browse sample places by city and category to add to an itinerary.
-- **Consistent data:** multi-step changes run in database transactions, and a trip cannot be shortened in a way that would delete planned places.
-- **Data privacy:** JWT authentication, with every trip query scoped to the signed-in user.
-- **Validation and errors:** consistent JSON error responses with meaningful HTTP status codes.
-- **API documentation:** an OpenAPI 3 specification with an interactive Swagger UI page.
+Needs Docker with Compose.
 
-## Technologies
-
-| Area | Technology |
-|---|---|
-| Runtime and framework | Node.js, Express 5 |
-| Database | PostgreSQL 17, node-postgres (`pg`) |
-| Authentication | JSON Web Tokens (`jsonwebtoken`), bcrypt (`bcryptjs`) |
-| API documentation | OpenAPI 3, Swagger UI (`swagger-ui-express`) |
-| Local database setup | Docker Compose |
-
-## How to Run
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) 20 or later (developed on Node.js 24)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/), which must be running
-
-### 1. Start the database
-
-From the project root (the folder that contains `docker-compose.yml`):
-
-```bash
-docker compose up -d
+```sh
+docker compose up --build -d     # build and start everything
+docker compose ps                # wait until all show "healthy" (about 15 s)
+curl http://localhost:8080/health
 ```
 
-This starts PostgreSQL on `localhost:5432`. The first start creates the tables from `backend/data/schema.sql` and loads the sample data from `backend/data/seed.sql`.
+`GET /api/health` returns 503 "degraded" on purpose: the Budget service is planned, not built yet.
 
-### 2. Start the backend
+Stop with `docker compose down` (keeps data) or `docker compose down -v` (back to sample data).
+Ports and environment variables: [`deploy/DEPLOY.md`](deploy/DEPLOY.md).
 
-```bash
-cd backend
-npm install
-```
+**Optional:** `cp .env.example .env` and set `GROQ_API_KEY` for real model answers. Without it the LLM service
+saves placeholder answers (`"source": "stub"`) and picks with simple rules. `.env` is git-ignored.
 
-Create the environment file:
+## Try it
 
-```bash
-# macOS, Linux, or Git Bash
-cp .env.example .env
+All requests go through the gateway. Swagger UI: `http://localhost:3001/docs` (trips), `3004` flights, `3005` hotels,
+`3006` car rentals, `3007` activities, `3008` advice. Full API: [`backend/gateway/openapi.yaml`](backend/gateway/openapi.yaml).
 
-# Windows PowerShell
-Copy-Item .env.example .env
-```
+**Login:** every route needs `Authorization: Bearer <token>` except register, login, health and reading
+flights, hotels, car rentals and activities. Get a token with the sample user:
 
-Replace `JWT_SECRET` in `.env` with a long random value, then start the server:
-
-```bash
-npm start
-```
-
-| Page | URL |
-|---|---|
-| API base URL | http://localhost:3000/api |
-| Swagger UI | http://localhost:3000/api-docs |
-
-Use `npm run dev` instead to restart the server automatically when a file changes.
-
-### Stopping or resetting the database
-
-```bash
-docker compose down      # stop the database and keep its data
-docker compose down -v   # stop the database and delete its data
-```
-
-After `down -v`, the next `docker compose up -d` recreates the tables and sample data.
-
-## Sample Accounts
-
-All sample accounts use the password `Password123!`.
-
-| Name | Email | Trips |
-|---|---|---|
-| Alice Chen | `alice@example.com` | 5 |
-| Bob Tanaka | `bob@example.com` | 3 |
-| Carol Lopez | `carol@example.com` | 3 |
-| David Kim | `david@example.com` | 2 |
-| Emma Wilson | `emma@example.com` | 2 |
-
-Alice's Japan Trip (trip 1) and Taiwan Trip (trip 3) already have places planned on their first days, which makes them good starting points for trying the itinerary endpoints.
-
-## Using the API
-
-1. Send `POST /api/auth/login` with an email and password.
-2. Copy the `token` from the response.
-3. Send `Authorization: Bearer <token>` with each protected request. Tokens expire after 1 hour.
-
-```bash
-curl -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
+```sh
+curl -X POST http://localhost:8080/api/auth/login -H "Content-Type: application/json" \
   -d '{"email":"alice@example.com","password":"Password123!"}'
-
-curl "http://localhost:3000/api/trips?search=japan&status=upcoming" \
-  -H "Authorization: Bearer <token>"
 ```
 
-### Endpoints
+| Resource | Path | Filters |
+|---|---|---|
+| Accounts | `/api/auth/register`, `/api/auth/login`, `/api/users/me` | |
+| Trips and itineraries | `/api/trips`, `/api/trips/{id}/itineraries/{day}/items` | title, upcoming, past |
+| Places | `/api/places` | `city`, `category` |
+| Flights | `/api/flights` | `origin`, `destination`, `departDate`, `maxPrice` |
+| Hotels | `/api/hotels` | `city`, `country`, `minStars`, `maxPrice`, `available` |
+| Car rentals | `/api/car-rentals` | `city`, `carType`, `minSeats`, `maxPrice`, `available` |
+| Activities | `/api/activities` | `city`, `category`, `maxPrice`, `q` |
+| Advice | `/api/advice` | `userId`, `tripId`, `topic` |
 
-| Method | Path | Description | Token |
-|---|---|---|---|
-| POST | `/api/auth/register` | Register an account | No |
-| POST | `/api/auth/login` | Log in and receive a token | No |
-| GET | `/api/users/me` | Get my account | Yes |
-| PUT | `/api/users/me` | Update my name and email | Yes |
-| DELETE | `/api/users/me` | Delete my account and trips | Yes |
-| POST | `/api/trips` | Create a trip | Yes |
-| GET | `/api/trips` | List my trips, with optional `search` and `status` filters | Yes |
-| GET | `/api/trips/:tripId` | Get one of my trips | Yes |
-| PUT | `/api/trips/:tripId` | Update one of my trips | Yes |
-| DELETE | `/api/trips/:tripId` | Delete one of my trips | Yes |
-| GET | `/api/trips/:tripId/itineraries` | List a trip's days, with the number of places on each | Yes |
-| GET | `/api/trips/:tripId/itineraries/:dayNumber` | Get one day's places in visiting order | Yes |
-| POST | `/api/trips/:tripId/itineraries/:dayNumber/items` | Add a place at a position, or at the end | Yes |
-| DELETE | `/api/trips/:tripId/itineraries/:dayNumber/items` | Remove every place from a day | Yes |
-| PUT | `/api/trips/:tripId/itineraries/:dayNumber/items/order` | Reorder a day's places | Yes |
-| GET | `/api/trips/:tripId/itineraries/:dayNumber/items/:itemId` | Get one itinerary item | Yes |
-| DELETE | `/api/trips/:tripId/itineraries/:dayNumber/items/:itemId` | Remove one place from a day | Yes |
-| GET | `/api/places` | List places, with optional `city` and `category` filters | Yes |
+Flights, hotels, car rentals, activities and advice support `GET`, `POST`, `GET/PUT/PATCH/DELETE /{id}`, plus
+`sort`, `order`, `limit`, `offset`. Errors look like `{ "error": { "code", "message", "details" } }`.
 
-Example: add the place with ID 5 as the second stop of day 1, then put day 1 in a new order:
+```sh
+curl "http://localhost:8080/api/hotels?city=Tokyo&minStars=4&maxPrice=200"
 
-```bash
-curl -X POST http://localhost:3000/api/trips/1/itineraries/1/items \
-  -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
-  -d '{"placeId":5,"position":2}'
-
-curl -X PUT http://localhost:3000/api/trips/1/itineraries/1/items/order \
-  -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
-  -d '{"itemIds":[2,15,1]}'
+# recommendation: the LLM service calls the other services, adds up the cost in code, and saves the result
+TOKEN=<token from login>
+curl -X POST http://localhost:8080/api/advice/recommendations -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"u1","origin":"SEA","destination":"Tokyo","nights":5,"travelers":1,"budget":2500}'
 ```
 
-The item IDs come from `GET /api/trips/1/itineraries/1`, and `itemIds` must list every item of the day exactly once.
+## Test
 
-### How Days Follow Trip Dates
+```sh
+# Postman collection (needs the stack running): 41 requests, 93 assertions
+npx newman run tests/Travel-Assistant.postman_collection.json -e tests/local.postman_environment.json
 
-- Creating a trip creates one empty day for every date, numbered from 1.
-- Changing the start date re-dates every day; the places stay on the same day number.
-- Making a trip longer adds empty days at the end.
-- Making a trip shorter removes the extra days, but only if they have no places. Otherwise the update returns `409` and nothing changes, so clear those days first.
-- A trip can last at most 90 days.
-
-### Status Codes
-
-| Code | Meaning |
-|---|---|
-| 200 / 201 / 204 | Success, created, or success with no content |
-| 400 | Invalid input, such as an unknown `placeId` or a position past the end of the day |
-| 401 | Missing or invalid token, or incorrect login |
-| 404 | The route, trip, day, or item was not found, including another user's trip |
-| 409 | The email is already registered, or new trip dates would remove days that still have places |
-| 500 | Unexpected server error |
-
-### HTTP Headers
-
-| Header | Used for |
-|---|---|
-| `Authorization` | Sends the JWT on protected requests |
-| `Content-Type` | Marks request and response bodies as JSON |
-| `Location` | Gives the URL of a newly created resource |
-| `X-Total-Count` | Custom header with the number of trips, days, or places in a list |
-| `WWW-Authenticate` | Names the required scheme on a `401` from a protected route |
-
-## API Documentation
-
-The documentation source is [`docs/openapi.yaml`](docs/openapi.yaml). While the server is running, open http://localhost:3000/api-docs to browse every endpoint with its parameters, JSON formats, status codes, and examples.
-
-To send requests from that page, log in through `POST /auth/login`, click **Authorize**, and paste the token.
-
-## Project Structure
-
-```
-.
-├── docker-compose.yml        # PostgreSQL for local development
-├── docs/
-│   └── openapi.yaml          # OpenAPI specification
-├── README.md                 # English documentation
-├── README.zh-TW.md           # Traditional Chinese documentation
-└── backend/
-    ├── app.js                # Express setup and server start
-    ├── routes/               # URL-to-controller mapping
-    ├── controllers/          # Request handling and HTTP responses
-    ├── data/                 # Database connection, SQL queries, schema, and seed data
-    ├── helpers/              # Validation, authentication, and shared error type
-    └── middleware/           # Authentication and error handling
+# Unit tests (Node 22+, no database needed)
+(cd backend/gateway && npm install && npm test)        # 15 tests
+(cd backend/llm-service && npm install && npm test)    # 13 tests
 ```
 
-A request moves through `route → controller → data → PostgreSQL`. Each service module has its own route, controller, and query files:
+## Data
 
-- **Users:** registration, login, and the signed-in user's account.
-- **Trips:** the trip CRUD operations, search, and status filtering.
-- **Itineraries:** a trip's days and the ordered places on each day.
-- **Places:** the catalog of places that can be added to a day.
+Each service creates its own database and sample rows on first start (six databases, one PostgreSQL server).
+SQL exports are in [`data/`](data/README.md).
 
-## Data Source
+## Layout
 
-The data in `backend/data/seed.sql` is simulated and was written for this assignment. It contains 5 users, 15 trips, 22 places, 116 itinerary days (one for each date of each trip), and 14 planned itinerary items. The places are well-known landmarks entered by hand with a name, city, and category. No external dataset or real personal data is used.
+```
+backend/        gateway, trip-service, flight/hotel/car-rental/activity-service, llm-service
+docker-compose.yml
+data/           SQL exports of the six databases
+tests/          Postman collection and environment (import into Postman)
+deploy/         deployment guide and a reference Dockerfile
+docs/ARCHITECTURE.md
+```
 
-## Design Notes and Limitations
+## Planned for Phase III
 
-- This assignment covers the user, trip, and itinerary parts of a larger group project. Flights, shared trips, and expenses are not included.
-- Places come from the sample catalog in the database. There is no Google Places integration yet; the `googlePlaceId` field is reserved for it and is currently empty.
-- Each trip has one owner, and trips cannot be shared.
-- Deleting an account also deletes that account's trips.
-- A trip in progress counts as `upcoming` until its end date has passed, based on the database server's current date.
-- Passwords cannot be changed after registration.
+Trip members, shared expenses and settlements (Budget service), live flight and hotel data from SerpApi,
+the React frontend, Google Places, cloud deployment.
+
+## Design
+
+Architecture, API, data model, mockups and the AI workflow are in the design document (`GroupName_PhaseII.pdf`).
+The LLM service is the AI component: it calls the flight, hotel and activity services, lets the model pick from
+their results, and computes the cost itself. Prices and ids always come from the services, never the model.

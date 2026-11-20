@@ -1,0 +1,451 @@
+openapi: 3.1.0
+info:
+  title: Travel Assistant - Flight Service
+  version: 1.0.0
+  description: 'Flights a traveler can pick for a trip. Cached in Redis for GET requests. Errors use { "error":
+    { "code", "message", "details" } }.'
+servers:
+  - url: http://localhost:3004
+    description: flight-service (published on localhost for development; other clients go through the gateway on
+      port 8080)
+tags:
+  - name: Flights
+  - name: Health
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Service and database health check
+      operationId: getFlightServiceHealth
+      responses:
+        "200":
+          description: Service and database are up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: flight-service
+                  cache:
+                    type: string
+                    enum:
+                      - redis
+                      - off
+        "503":
+          description: Database unavailable
+  /api/flights:
+    get:
+      tags:
+        - Flights
+      summary: List flights
+      operationId: listFlights
+      description: "All filters are optional and can be combined. Responses are cached in Redis (see the X-Cache
+        header: HIT or MISS)."
+      parameters:
+        - name: origin
+          in: query
+          description: Origin airport code (equals (ignore case))
+          schema:
+            type: string
+        - name: destination
+          in: query
+          description: Destination airport code (equals (ignore case))
+          schema:
+            type: string
+        - name: departDate
+          in: query
+          description: Departure date (YYYY-MM-DD) (on date)
+          schema:
+            type: string
+            format: date
+        - name: maxPrice
+          in: query
+          description: Highest price (<=)
+          schema:
+            type: number
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - id
+              - price
+              - depart_at
+              - arrive_at
+            default: id
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: asc
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Page size
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Rows to skip
+      responses:
+        "200":
+          description: A page of flights
+          headers:
+            X-Total-Count:
+              description: Rows matching the filters
+              schema:
+                type: integer
+            X-Cache:
+              description: HIT if served from Redis
+              schema:
+                type: string
+                enum:
+                  - HIT
+                  - MISS
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - count
+                  - total
+                  - data
+                properties:
+                  count:
+                    type: integer
+                  total:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Flight"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    post:
+      tags:
+        - Flights
+      summary: Create a flight
+      operationId: createFlight
+      description: Send every required field.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlightInput"
+      responses:
+        "201":
+          description: Flight created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flight"
+          headers:
+            Location:
+              description: URL of the new record
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/flights/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        description: Flight ID
+    get:
+      tags:
+        - Flights
+      summary: Get one flight
+      operationId: getFlight
+      responses:
+        "200":
+          description: The flight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flight"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags:
+        - Flights
+      summary: Replace a flight
+      operationId: replaceFlight
+      description: Send every required field. Optional fields left out go back to their default (or null).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlightInput"
+      responses:
+        "200":
+          description: The updated flight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flight"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags:
+        - Flights
+      summary: Update some fields of a flight
+      operationId: updateFlight
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlightPatch"
+      responses:
+        "200":
+          description: The updated flight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flight"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - Flights
+      summary: Delete a flight
+      operationId: deleteFlight
+      responses:
+        "204":
+          description: Deleted, no content
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+components:
+  schemas:
+    Flight:
+      type: object
+      required:
+        - id
+        - airline
+        - flight_number
+        - origin
+        - destination
+        - depart_at
+        - arrive_at
+        - price
+      properties:
+        id:
+          type: integer
+          example: 1
+        airline:
+          type: string
+          example: Alaska Airlines
+        flight_number:
+          type: string
+          maxLength: 10
+          example: AS 21
+        origin:
+          type: string
+          maxLength: 3
+          description: Origin airport code
+          example: SEA
+        destination:
+          type: string
+          maxLength: 3
+          description: Destination airport code
+          example: HND
+        depart_at:
+          type: string
+          format: date-time
+          example: 2026-12-01T10:15:00Z
+        arrive_at:
+          type: string
+          format: date-time
+          example: 2026-12-02T14:05:00Z
+        price:
+          type: number
+          minimum: 0
+          description: Price per passenger
+          example: 845.5
+        currency:
+          type:
+            - string
+            - "null"
+          maxLength: 3
+          default: USD
+          example: USD
+        seats_available:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+          default: 0
+          example: 12
+        created_at:
+          type: string
+          format: date-time
+    FlightInput:
+      type: object
+      additionalProperties: false
+      required:
+        - airline
+        - flight_number
+        - origin
+        - destination
+        - depart_at
+        - arrive_at
+        - price
+      properties:
+        airline:
+          type: string
+          example: Alaska Airlines
+        flight_number:
+          type: string
+          maxLength: 10
+          example: AS 21
+        origin:
+          type: string
+          maxLength: 3
+          description: Origin airport code
+          example: SEA
+        destination:
+          type: string
+          maxLength: 3
+          description: Destination airport code
+          example: HND
+        depart_at:
+          type: string
+          format: date-time
+          example: 2026-12-01T10:15:00Z
+        arrive_at:
+          type: string
+          format: date-time
+          example: 2026-12-02T14:05:00Z
+        price:
+          type: number
+          minimum: 0
+          description: Price per passenger
+          example: 845.5
+        currency:
+          type: string
+          maxLength: 3
+          default: USD
+          example: USD
+        seats_available:
+          type: integer
+          minimum: 0
+          default: 0
+          example: 12
+    FlightPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Any subset of the fields
+      properties:
+        airline:
+          type: string
+          example: Alaska Airlines
+        flight_number:
+          type: string
+          maxLength: 10
+          example: AS 21
+        origin:
+          type: string
+          maxLength: 3
+          description: Origin airport code
+          example: SEA
+        destination:
+          type: string
+          maxLength: 3
+          description: Destination airport code
+          example: HND
+        depart_at:
+          type: string
+          format: date-time
+          example: 2026-12-01T10:15:00Z
+        arrive_at:
+          type: string
+          format: date-time
+          example: 2026-12-02T14:05:00Z
+        price:
+          type: number
+          minimum: 0
+          description: Price per passenger
+          example: 845.5
+        currency:
+          type: string
+          maxLength: 3
+          default: USD
+          example: USD
+        seats_available:
+          type: integer
+          minimum: 0
+          default: 0
+          example: 12
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              example: NOT_FOUND
+            message:
+              type: string
+            details: {}
+  responses:
+    BadRequest:
+      description: Invalid or missing field or query parameter (BAD_REQUEST). "details" lists every invalid field.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: BAD_REQUEST
+              message: Validation failed
+              details:
+                - field: name
+                  message: is required
+    NotFound:
+      description: Flight not found (NOT_FOUND)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BadGateway:
+      description: The language model failed (LLM_UNAVAILABLE)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

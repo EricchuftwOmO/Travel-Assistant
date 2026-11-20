@@ -1,22 +1,181 @@
+# Starts every service: docker compose up --build / docker compose down
+# Clients talk only to the gateway (http://localhost:8080); other services are reached by service name.
+# One PostgreSQL server (a database per service) and one Redis GET cache shared by four services.
+# Set GROQ_API_KEY for real LLM answers and JWT_SECRET to sign login tokens, in .env.
+
 services:
-  db:
-    image: postgres:17-alpine
-    container_name: travel-app-db
-    environment:
-      POSTGRES_USER: travel
-      POSTGRES_PASSWORD: travel_dev
-      POSTGRES_DB: travel_app
+  gateway:
+    build: ./backend/gateway
     ports:
-      - "127.0.0.1:5432:5432"
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      TRIP_SERVICE_URL: http://trip-service:3001
+      SEARCH_SERVICE_URL: http://activity-service:3007
+      BUDGET_SERVICE_URL: http://budget-service:3003
+      FLIGHT_SERVICE_URL: http://flight-service:3004
+      HOTEL_SERVICE_URL: http://hotel-service:3005
+      CAR_RENTAL_SERVICE_URL: http://car-rental-service:3006
+      LLM_SERVICE_URL: http://llm-service:3008
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:
-      - pgdata:/var/lib/postgresql/data # 1. 將容器內的資料目錄綁定到 named volume
-      - ./backend/data/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro  # 讓資料庫在「第一次建立」時，自動依序幫你建立資料表（Schema）並填入測試假資料（Seed）。
-      - ./backend/data/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U travel -d travel_app"]
-      interval: 3s
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  trip-service:
+    build: ./backend/trip-service
+    ports:
+      - "127.0.0.1:3001:3001"   # dev only: Swagger UI at http://localhost:3001/docs
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/trip_db
+      # Signs login tokens. Set a long random JWT_SECRET in .env; the default is for local development only.
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  flight-service:
+    build: ./backend/flight-service
+    ports:
+      - "127.0.0.1:3004:3004"   # dev only: Swagger UI at http://localhost:3004/docs
+    environment:
+      PORT: 3004
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3004/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  hotel-service:
+    build: ./backend/hotel-service
+    ports:
+      - "127.0.0.1:3005:3005"   # dev only: Swagger UI at http://localhost:3005/docs
+    environment:
+      PORT: 3005
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3005/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  car-rental-service:
+    build: ./backend/car-rental-service
+    ports:
+      - "127.0.0.1:3006:3006"   # dev only: Swagger UI at http://localhost:3006/docs
+    environment:
+      PORT: 3006
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3006/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  activity-service:
+    build: ./backend/activity-service
+    ports:
+      - "127.0.0.1:3007:3007"   # dev only: Swagger UI at http://localhost:3007/docs
+    environment:
+      PORT: 3007
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3007/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  llm-service:
+    build: ./backend/llm-service
+    ports:
+      - "127.0.0.1:3008:3008"   # dev only: Swagger UI at http://localhost:3008/docs
+    environment:
+      PORT: 3008
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-openai/gpt-oss-20b}
+      # the LLM service calls these services directly (internal network) to build recommendations
+      FLIGHT_SERVICE_URL: http://flight-service:3004
+      HOTEL_SERVICE_URL: http://hotel-service:3005
+      ACTIVITY_SERVICE_URL: http://activity-service:3007
+      CAR_RENTAL_SERVICE_URL: http://car-rental-service:3006
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3008/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
 
 volumes:
-  pgdata: # 2. 在全域宣告這個名為 pgdata 的 volume
+  pgdata:
