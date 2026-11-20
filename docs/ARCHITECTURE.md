@@ -6,7 +6,7 @@ Diagrams are [Mermaid](https://mermaid.js.org/) and render on GitHub. Dashed box
 
 ```mermaid
 flowchart TB
-    client["CLIENT<br/>(React app, later)"]
+    client["CLIENT<br/>React app :5173"]
     gateway["API GATEWAY :8080<br/>login check (JWT) · routing · CORS · X-Request-Id · timeouts · /api/health"]
 
     client --> gateway
@@ -16,9 +16,13 @@ flowchart TB
         budget["BUDGET SERVICE :3003"]:::planned
     end
 
-    trip["TRIP SERVICE :3001<br/>/api/auth · /api/users<br/>/api/trips (+ itineraries) · /api/places<br/>(JWT auth)"]
+    user["USER SERVICE :3009<br/>/api/graphql (GraphQL) · /api/auth<br/>(signs JWTs)"]
+    trip["TRIP SERVICE :3001<br/>/api/trips (+ flights, itineraries) · /api/places<br/>(checks JWT)"]
 
-    gateway -->|"/api/auth, /api/users, /api/trips, /api/places"| trip
+    gateway -->|"/api/graphql, /api/auth, /api/users"| user
+    gateway -->|"/api/trips, /api/places"| trip
+    user -->|"delete account: DELETE /internal/my-data"| trip
+    trip -->|"attach flight: GET /api/flights/:id"| flight
     gateway -.->|"/api/budget"| budget
 
     subgraph search["Search services (PostgreSQL + Redis cache)"]
@@ -86,6 +90,8 @@ gateway), lets the model choose among the results, adds up the cost in code, and
 | Container | Image / folder | Port | Published | Depends on |
 |---|---|---|---|---|
 | `gateway` | `backend/gateway` | 8080 | `8080` (all clients) | none (answers 502 if a service is down) |
+| `frontend` | `frontend` (nginx) | 80 | `5173` | gateway |
+| `user-service` | `backend/user-service` | 3009 | `127.0.0.1:3009` | postgres (healthy) |
 | `trip-service` | `backend/trip-service` | 3001 | `127.0.0.1:3001` | postgres (healthy) |
 | `flight-service` | `backend/flight-service` | 3004 | `127.0.0.1:3004` | postgres (healthy), redis |
 | `hotel-service` | `backend/hotel-service` | 3005 | `127.0.0.1:3005` | postgres (healthy), redis |
@@ -276,7 +282,8 @@ Travel-Assistant/
 ├── docs/ARCHITECTURE.md        this file
 └── backend/
     ├── gateway/                routing table in src/routes.js, URLs in src/config.js, openapi.yaml
-    ├── trip-service/           accounts, trips, itineraries (hand-written; see its README.md)
+    ├── user-service/           accounts and login: GraphQL (src/graphql.js) + REST login
+    ├── trip-service/           trips, trip flights, itineraries (hand-written; see its README.md)
     ├── flight-service/         each CRUD service has the same layout:
     ├── hotel-service/            server.js            start-up
     ├── car-rental-service/       src/resource.js      fields, filters, sample data (the only file that differs)

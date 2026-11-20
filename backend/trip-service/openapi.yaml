@@ -6,14 +6,15 @@ info:
     name: ISC
     url: https://opensource.org/license/isc-license-txt
   description: |
-    RESTful API for managing user accounts, trips, and day-by-day itineraries
-    in a travel planning app.
+    RESTful API for trips, the flights attached to them, and day-by-day
+    itineraries in a travel planning app. Accounts and login live in the
+    user service (GraphQL at /api/graphql); this service only checks the token.
 
     **Itineraries:** every trip has one itinerary day per date, created and
     kept in step with the trip's dates automatically. Each day holds an
     ordered list of places.
 
-    **Authentication:** register or log in to receive a JWT, then send it as
+    **Authentication:** log in through the user service to receive a JWT, then send it as
     `Authorization: Bearer <token>`. Tokens expire after 1 hour. In this page,
     click **Authorize** and paste the token (without the word `Bearer`).
 
@@ -24,10 +25,6 @@ servers:
   - url: /api
     description: This server
 tags:
-  - name: Auth
-    description: Create an account and obtain a token
-  - name: Users
-    description: Manage the signed-in user's own account
   - name: Trips
     description: Create, find, and manage the signed-in user's own trips
   - name: Itineraries
@@ -35,164 +32,6 @@ tags:
   - name: Places
     description: Browse the places that can be added to an itinerary
 paths:
-  /auth/register:
-    post:
-      tags: [Auth]
-      summary: Register a new account
-      operationId: register
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterRequest'
-            example:
-              name: Frank Lee
-              email: frank@example.com
-              password: Password123!
-      responses:
-        '201':
-          description: Account created. The response includes a token, so no separate login is needed.
-          headers:
-            Location:
-              description: URL of the new account
-              schema:
-                type: string
-              example: /api/users/me
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-              example:
-                user:
-                  id: 6
-                  name: Frank Lee
-                  email: frank@example.com
-                  createdAt: '2026-11-06T18:30:00.000Z'
-                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjZ9.signature
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '409':
-          $ref: '#/components/responses/EmailConflict'
-        '500':
-          $ref: '#/components/responses/ServerError'
-  /auth/login:
-    post:
-      tags: [Auth]
-      summary: Log in
-      operationId: login
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
-            example:
-              email: alice@example.com
-              password: Password123!
-      responses:
-        '200':
-          description: Credentials accepted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-              example:
-                user:
-                  id: 1
-                  name: Alice Chen
-                  email: alice@example.com
-                  createdAt: '2026-11-06T18:00:00.000Z'
-                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjF9.signature
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '401':
-          description: The email or password is incorrect
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error:
-                  code: UNAUTHORIZED
-                  message: Email or password is incorrect
-        '500':
-          $ref: '#/components/responses/ServerError'
-  /users/me:
-    get:
-      tags: [Users]
-      summary: Get my account
-      operationId: getMe
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: The signed-in user
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-              example:
-                id: 1
-                name: Alice Chen
-                email: alice@example.com
-                createdAt: '2026-11-06T18:00:00.000Z'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/ServerError'
-    put:
-      tags: [Users]
-      summary: Update my account
-      description: Replaces the name and email. The password cannot be changed through this endpoint.
-      operationId: updateMe
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ProfileRequest'
-            example:
-              name: Alice Chen-Wu
-              email: alice@example.com
-      responses:
-        '200':
-          description: Account updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-              example:
-                id: 1
-                name: Alice Chen-Wu
-                email: alice@example.com
-                createdAt: '2026-11-06T18:00:00.000Z'
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '409':
-          $ref: '#/components/responses/EmailConflict'
-        '500':
-          $ref: '#/components/responses/ServerError'
-    delete:
-      tags: [Users]
-      summary: Delete my account
-      description: Permanently deletes the account and all of its trips. Existing tokens stop working immediately.
-      operationId: deleteMe
-      security:
-        - bearerAuth: []
-      responses:
-        '204':
-          description: Account and trips deleted
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/ServerError'
   /trips:
     post:
       tags: [Trips]
@@ -403,6 +242,105 @@ paths:
           $ref: '#/components/responses/TripNotFound'
         '500':
           $ref: '#/components/responses/ServerError'
+  /trips/{tripId}/flights:
+    parameters:
+      - name: tripId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags:
+        - Trips
+      summary: List the flights attached to a trip
+      operationId: listTripFlights
+      responses:
+        "200":
+          description: The trip's flights, earliest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TripFlight"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TripNotFound"
+      security:
+        - bearerAuth: []
+    post:
+      tags:
+        - Trips
+      summary: Attach a flight from the flight service
+      description: The trip service reads the flight from the flight service and copies its details onto the trip.
+      operationId: addTripFlight
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - flightId
+              properties:
+                flightId:
+                  type: integer
+                  minimum: 1
+            example:
+              flightId: 1
+      responses:
+        "201":
+          description: Flight attached
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TripFlight"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TripNotFound"
+        "409":
+          description: The flight is already on this trip
+        "502":
+          description: The flight service is unavailable
+      security:
+        - bearerAuth: []
+  /trips/{tripId}/flights/{tripFlightId}:
+    delete:
+      tags:
+        - Trips
+      summary: Remove a flight from a trip
+      operationId: removeTripFlight
+      parameters:
+        - name: tripId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: tripFlightId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "204":
+          description: Removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TripNotFound"
+      security:
+        - bearerAuth: []
   /trips/{tripId}/itineraries:
     parameters:
       - $ref: '#/components/parameters/TripId'
@@ -750,6 +688,77 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/ServerError'
+  /places/config:
+    get:
+      tags: [Places]
+      summary: Whether Google Places is available
+      description: The app shows the Google map in Add place when this is true, and the sample catalog otherwise.
+      responses:
+        '200':
+          description: Configuration
+          content:
+            application/json:
+              example:
+                googlePlaces: true
+      security:
+        - bearerAuth: []
+  /places/nearby:
+    get:
+      tags: [Places]
+      summary: Popular Google places around a point (the visible map area)
+      description: |
+        Proxies Google Places API (New) Nearby Search with the server's key, asking only for the fields the
+        app shows. Answers are cached for 5 minutes per ~100 m area, so small map moves do not call Google again.
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number, minimum: -90, maximum: 90 }, example: 25.034 }
+        - { name: lng, in: query, required: true, schema: { type: number, minimum: -180, maximum: 180 }, example: 121.5645 }
+        - { name: radius, in: query, description: Meters (default 1500), schema: { type: number, minimum: 100, maximum: 50000 } }
+        - { name: category, in: query, schema: { type: string, enum: [attraction, food, museum, nature, shopping] } }
+        - { name: language, in: query, description: 'Language of names, e.g. en, zh-TW (default en)', schema: { type: string } }
+      responses:
+        '200':
+          description: Up to 20 places, most popular first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GooglePlace'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          description: Google Places failed or rejected the key
+        '503':
+          description: No GOOGLE_PLACES_API_KEY on the server, or the Google quota is used up
+      security:
+        - bearerAuth: []
+  /places/locate:
+    get:
+      tags: [Places]
+      summary: Where a destination is (to center the map)
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string }, example: Tokyo }
+        - { name: language, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Location and viewport
+          content:
+            application/json:
+              example:
+                name: Tokyo
+                lat: 35.6764
+                lng: 139.65
+                viewport: { north: 35.8984, east: 139.9188, south: 35.5014, west: 139.5629 }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          description: Google found nothing for q
+        '503':
+          description: No GOOGLE_PLACES_API_KEY on the server
+      security:
+        - bearerAuth: []
 components:
   securitySchemes:
     bearerAuth:
@@ -787,6 +796,60 @@ components:
         maximum: 2147483647
       example: 1
   schemas:
+    GooglePlace:
+      type: object
+      description: A place from Google Places, as returned by /places/nearby.
+      properties:
+        googlePlaceId: { type: string, example: ChIJH56c2rarQjQRphD9gvC8BhI }
+        name: { type: string, example: Taipei 101 }
+        address: { type: string, nullable: true }
+        lat: { type: number, example: 25.0339639 }
+        lng: { type: number, example: 121.5644722 }
+        category: { type: string, enum: [attraction, food, museum, nature, shopping] }
+        type: { type: string, nullable: true, example: Tourist attraction }
+        rating: { type: number, nullable: true, example: 4.6 }
+        ratingCount: { type: integer, nullable: true, example: 98765 }
+    TripFlight:
+      type: object
+      description: A flight attached to a trip (details copied from the flight service).
+      properties:
+        id:
+          type: integer
+          example: 1
+        tripId:
+          type: integer
+          example: 1
+        flightId:
+          type: integer
+          nullable: true
+          example: 1
+        airline:
+          type: string
+          example: Alaska Airlines
+        flightNumber:
+          type: string
+          example: AS 21
+        origin:
+          type: string
+          example: SEA
+        destination:
+          type: string
+          example: HND
+        departAt:
+          type: string
+          format: date-time
+        arriveAt:
+          type: string
+          format: date-time
+        price:
+          type: number
+          example: 845.5
+        currency:
+          type: string
+          example: USD
+        createdAt:
+          type: string
+          format: date-time
     RegisterRequest:
       type: object
       required: [name, email, password]
@@ -950,12 +1013,20 @@ components:
             $ref: '#/components/schemas/ItineraryItem'
     NewItemRequest:
       type: object
-      required: [placeId]
+      description: Send either placeId (sample catalog) or googlePlaceId (Google Places), not both.
       properties:
         placeId:
           type: integer
           minimum: 1
-          description: ID from `GET /places`
+          description: ID from `GET /places` (the sample catalog)
+        googlePlaceId:
+          type: string
+          description: |
+            A place ID from `GET /places/nearby`. The service reads the place from Google and saves its
+            name, address and location. 503 when the server has no Google key.
+        language:
+          type: string
+          description: Language of the saved name, e.g. en or zh-TW (default en)
         position:
           type: integer
           minimum: 1

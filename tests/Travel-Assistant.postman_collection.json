@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Travel Assistant API (Phase II)",
-    "description": "Runs against the API gateway (docker compose up --build). Covers CRUD, filtering, validation errors, and the recommendation summary (business logic). Every request has tests; records it creates it deletes.",
+    "name": "Travel Assistant API",
+    "description": "Runs against the API gateway (docker compose up --build). Covers the GraphQL user service, CRUD, filtering, validation errors, trips with flights, and the recommendation summary (business logic). Every request has tests; records it creates it deletes.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -841,7 +841,7 @@
       ]
     },
     {
-      "name": "5. Trip service (accounts, trips, itineraries)",
+      "name": "5. Trip service (trips, flights, itineraries)",
       "description": "Eric's trip service through the gateway. Signs in as the seeded user alice@example.com, creates a trip and checks its day-by-day itinerary, then deletes it.",
       "item": [
         {
@@ -1052,6 +1052,349 @@
           }
         },
         {
+          "name": "Attach flight 1 to the trip (details copied from the flight service)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('flight details were copied from the flight service', () => { pm.expect(body.flightId).to.eql(1); pm.expect(body.airline).to.eql('Alaska Airlines'); pm.expect(body.origin).to.eql('SEA'); pm.expect(body.price).to.be.a('number'); });",
+                  "pm.test('Location header points at the trip flight', () => pm.expect(pm.response.headers.get('Location')).to.eql(`/api/trips/${pm.collectionVariables.get('tripId')}/flights/${body.id}`));",
+                  "pm.collectionVariables.set('tripFlightId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips/{{tripId}}/flights",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips",
+                "{{tripId}}",
+                "flights"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"flightId\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "ERROR: attach the same flight again -> 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('error code CONFLICT', () => pm.expect(pm.response.json().error.code).to.eql('CONFLICT'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips/{{tripId}}/flights",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips",
+                "{{tripId}}",
+                "flights"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"flightId\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "ERROR: attach a flight that does not exist -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('names the bad flightId', () => pm.expect(pm.response.json().error.details).to.include('flightId does not match any flight'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips/{{tripId}}/flights",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips",
+                "{{tripId}}",
+                "flights"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"flightId\": 999999\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "The trip lists its flight",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('one flight on the trip', () => pm.expect(pm.response.json().flights).to.have.lengthOf(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips/{{tripId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips",
+                "{{tripId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Remove the flight from the trip",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips/{{tripId}}/flights/{{tripFlightId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips",
+                "{{tripId}}",
+                "flights",
+                "{{tripFlightId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create a trip from a flight (flightId on create)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('the trip starts with the flight attached', () => { pm.expect(body.flights).to.have.lengthOf(1); pm.expect(body.flights[0].flightNumber).to.eql('BR 17'); });",
+                  "pm.collectionVariables.set('flightTripId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman flight trip\",\n  \"destination\": \"Taipei\",\n  \"startDate\": \"2027-02-02\",\n  \"endDate\": \"2027-02-06\",\n  \"flightId\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cleanup: delete the flight trip",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips/{{flightTripId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips",
+                "{{flightTripId}}"
+              ]
+            }
+          }
+        },
+        {
           "name": "The trip has one itinerary day per date",
           "event": [
             {
@@ -1174,6 +1517,286 @@
                   "value": "Tokyo"
                 }
               ]
+            }
+          }
+        },
+        {
+          "name": "Google Places: is it configured?",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('reports googlePlaces true or false', () => pm.expect(body.googlePlaces).to.be.a('boolean'));",
+                  "pm.collectionVariables.set('googlePlaces', String(body.googlePlaces));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/places/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "places",
+                "config"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Google Places: places near Taipei 101 (200 with a key, 503 without)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const configured = pm.collectionVariables.get('googlePlaces') === 'true';",
+                  "if (configured) {",
+                  "  pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "  const places = pm.response.json();",
+                  "  pm.test('a list of places with id, name and location', () => { pm.expect(places).to.be.an('array').that.is.not.empty; const p = places[0]; pm.expect(p.googlePlaceId).to.be.a('string'); pm.expect(p.name).to.be.a('string'); pm.expect(p.lat).to.be.a('number'); pm.expect(p.lng).to.be.a('number'); });",
+                  "  pm.collectionVariables.set('googlePlaceId', places[0].googlePlaceId);",
+                  "} else {",
+                  "  pm.test('Status is 503 (no key on the server)', () => pm.response.to.have.status(503));",
+                  "  pm.test('error says Google Places is not configured', () => pm.expect(pm.response.json().error.message).to.include('not configured'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/places/nearby?lat=25.0340&lng=121.5645&radius=1500&category=attraction",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "places",
+                "nearby"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "25.0340"
+                },
+                {
+                  "key": "lng",
+                  "value": "121.5645"
+                },
+                {
+                  "key": "radius",
+                  "value": "1500"
+                },
+                {
+                  "key": "category",
+                  "value": "attraction"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: Google Places: bad coordinates and category -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('lists all three problems', () => pm.expect(pm.response.json().error.details).to.have.lengthOf(3));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/places/nearby?lat=95&lng=abc&category=casino",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "places",
+                "nearby"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "95"
+                },
+                {
+                  "key": "lng",
+                  "value": "abc"
+                },
+                {
+                  "key": "category",
+                  "value": "casino"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Google Places: locate the trip destination (200 with a key, 503 without)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.collectionVariables.get('googlePlaces') === 'true') {",
+                  "  pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "  pm.test('Tokyo is near 35.7N 139.7E', () => { const b = pm.response.json(); pm.expect(b.lat).to.be.closeTo(35.7, 0.5); pm.expect(b.lng).to.be.closeTo(139.7, 0.5); });",
+                  "} else {",
+                  "  pm.test('Status is 503 (no key on the server)', () => pm.response.to.have.status(503));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/places/locate?q=Tokyo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "places",
+                "locate"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Tokyo"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: add a place with both placeId and googlePlaceId -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('explains the choice', () => pm.expect(pm.response.json().error.details[0]).to.include('either placeId'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips/{{tripId}}/itineraries/1/items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips",
+                "{{tripId}}",
+                "itineraries",
+                "1",
+                "items"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"placeId\": 1,\n  \"googlePlaceId\": \"ChIJH56c2rarQjQRphD9gvC8BhI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Google Places: add a Google place to Day 1 (201 with a key, 503 without)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('googlePlaceId')) pm.collectionVariables.set('googlePlaceId', 'ChIJH56c2rarQjQRphD9gvC8BhI');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.collectionVariables.get('googlePlaces') === 'true') {",
+                  "  pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "  const item = pm.response.json();",
+                  "  pm.test('saved with the Google ID, address and location', () => { pm.expect(item.place.googlePlaceId).to.eql(pm.collectionVariables.get('googlePlaceId')); pm.expect(item.place.lat).to.be.a('number'); pm.expect(item.place.address).to.be.a('string'); });",
+                  "} else {",
+                  "  pm.test('Status is 503 (no key on the server)', () => pm.response.to.have.status(503));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips/{{tripId}}/itineraries/1/items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips",
+                "{{tripId}}",
+                "itineraries",
+                "1",
+                "items"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"googlePlaceId\": \"{{googlePlaceId}}\",\n  \"position\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           }
         },
@@ -1643,6 +2266,1173 @@
                 "api",
                 "advice",
                 "{{recoId4}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. User service (GraphQL: accounts and My Profile)",
+      "item": [
+        {
+          "name": "Prepare: a unique email for this run",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('gqlEmail', `postman-${Date.now()}@example.com`);",
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "login mutation -> token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('no errors', () => pm.expect(body.errors).to.be.undefined);",
+                  "pm.test('returns a token and Alice', () => { pm.expect(body.data.login.token).to.be.a('string').and.not.empty; pm.expect(body.data.login.user.email).to.eql('alice@example.com'); });",
+                  "pm.collectionVariables.set('gqlToken', body.data.login.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Login($email: String!, $password: String!) {\n  login(email: $email, password: $password) { token user { id name email } }\n}",
+                "variables": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"Password123!\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "me with the token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('me is Alice', () => pm.expect(pm.response.json().data.me.name).to.eql('Alice Chen'));",
+                  "pm.test('createdAt is an ISO date', () => pm.expect(pm.response.json().data.me.createdAt).to.match(/^\\d{4}-\\d{2}-\\d{2}T/));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{gqlToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Me {\n  me { id name email createdAt }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "me without a token is null",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('me is null', () => pm.expect(pm.response.json().data.me).to.eql(null));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Me {\n  me { id name email createdAt }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: login with a wrong password -> UNAUTHENTICATED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const err = pm.response.json().errors[0];",
+                  "pm.test('UNAUTHENTICATED', () => { pm.expect(err.extensions.code).to.eql('UNAUTHENTICATED'); pm.expect(err.extensions.status).to.eql(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation {\n  login(email: \"alice@example.com\", password: \"wrong-password\") { token }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: register with bad input -> BAD_USER_INPUT lists every field",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const err = pm.response.json().errors[0];",
+                  "pm.test('BAD_USER_INPUT with 3 details', () => { pm.expect(err.extensions.code).to.eql('BAD_USER_INPUT'); pm.expect(err.extensions.details).to.have.lengthOf(3); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Register($input: RegisterInput!) {\n  register(input: $input) { token }\n}",
+                "variables": "{\n  \"input\": {\n    \"name\": \" \",\n    \"email\": \"not-an-email\",\n    \"password\": \"short\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: asking for a field the schema does not have -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('GRAPHQL_VALIDATION_FAILED', () => pm.expect(pm.response.json().errors[0].extensions.code).to.eql('GRAPHQL_VALIDATION_FAILED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "{\n  me { passwordHash }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "register a new user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('no errors', () => pm.expect(body.errors).to.be.undefined);",
+                  "pm.test('the new user is returned with a token', () => { pm.expect(body.data.register.user.name).to.eql('Postman User'); pm.expect(body.data.register.token).to.be.a('string'); });",
+                  "pm.collectionVariables.set('newToken', body.data.register.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Register($input: RegisterInput!) {\n  register(input: $input) { token user { id name email } }\n}",
+                "variables": "{\n  \"input\": {\n    \"name\": \"Postman User\",\n    \"email\": \"{{gqlEmail}}\",\n    \"password\": \"Password123!\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: register the same email again -> CONFLICT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CONFLICT', () => pm.expect(pm.response.json().errors[0].extensions.code).to.eql('CONFLICT'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Register($input: RegisterInput!) {\n  register(input: $input) { token }\n}",
+                "variables": "{\n  \"input\": {\n    \"name\": \"Again\",\n    \"email\": \"{{gqlEmail}}\",\n    \"password\": \"Password123!\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "updateMe changes the name",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('no errors', () => pm.expect(body.errors).to.be.undefined);",
+                  "pm.test('name updated', () => pm.expect(body.data.updateMe.name).to.eql('Postman Renamed'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Update($input: ProfileInput!) {\n  updateMe(input: $input) { id name email }\n}",
+                "variables": "{\n  \"input\": {\n    \"name\": \"Postman Renamed\",\n    \"email\": \"{{gqlEmail}}\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Profile: me with every profile field (defaults for a new user)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('no errors', () => pm.expect(body.errors).to.be.undefined);",
+                  "const me = body.data.me;",
+                  "pm.test('name is split into first and last name', () => { pm.expect(me.firstName).to.eql('Postman'); pm.expect(me.lastName).to.eql('Renamed'); pm.expect(me.name).to.eql('Postman Renamed'); });",
+                  "pm.test('optional fields start empty', () => { pm.expect(me.gender).to.eql(null); pm.expect(me.dateOfBirth).to.eql(null); });",
+                  "pm.test('default language settings', () => pm.expect(me.languageSettings).to.eql({ language: 'en', timezone: 'America/Los_Angeles' }));",
+                  "pm.test('no travel preferences yet', () => pm.expect(me.travelPreferences).to.eql({ budgetLevel: null, travelStyles: [] }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Profile {\n  me {\n    id firstName lastName name email gender dateOfBirth phone country\n    languageSettings { language timezone }\n    travelPreferences { budgetLevel travelStyles }\n  }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Profile: updateBasicInfo (Basic Information tab)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('no errors', () => pm.expect(body.errors).to.be.undefined);",
+                  "const u = body.data.updateBasicInfo;",
+                  "pm.test('every field saved', () => { pm.expect(u.name).to.eql('Chun-Wei Chu'); pm.expect(u.gender).to.eql('MALE'); pm.expect(u.dateOfBirth).to.eql('2000-05-10'); pm.expect(u.phone).to.eql('+1 (253) 555-0198'); pm.expect(u.country).to.eql('United States'); });",
+                  "pm.test('email is unchanged', () => pm.expect(u.email).to.eql(pm.collectionVariables.get('gqlEmail')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Basic($input: UpdateBasicInfoInput!) {\n  updateBasicInfo(input: $input) { firstName lastName name gender dateOfBirth phone country email }\n}",
+                "variables": "{\n  \"input\": {\n    \"firstName\": \"Chun-Wei\",\n    \"lastName\": \"Chu\",\n    \"gender\": \"MALE\",\n    \"dateOfBirth\": \"2000-05-10\",\n    \"phone\": \"+1 (253) 555-0198\",\n    \"country\": \"United States\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Profile: updateBasicInfo changes only the fields sent; null clears",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('no errors', () => pm.expect(body.errors).to.be.undefined);",
+                  "pm.test('phone cleared, the rest kept', () => pm.expect(body.data.updateBasicInfo).to.eql({ firstName: 'Chun-Wei', phone: null, country: 'United States' }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation {\n  updateBasicInfo(input: { phone: null }) { firstName phone country }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: Profile: bad date of birth and phone -> BAD_USER_INPUT with both problems",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const err = pm.response.json().errors[0];",
+                  "pm.test('BAD_USER_INPUT with 2 details', () => { pm.expect(err.extensions.code).to.eql('BAD_USER_INPUT'); pm.expect(err.extensions.details).to.have.lengthOf(2); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation {\n  updateBasicInfo(input: { dateOfBirth: \"2000-02-30\", phone: \"call me maybe\" }) { id }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: Profile: unknown gender -> 400 from the schema",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation {\n  updateBasicInfo(input: { gender: ROBOT }) { id }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Profile: updateLanguageSettings (Language & Timezone tab)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('no errors', () => pm.expect(body.errors).to.be.undefined);",
+                  "pm.test('saved', () => pm.expect(body.data.updateLanguageSettings).to.eql({ language: 'zh-TW', timezone: 'Asia/Taipei' }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation {\n  updateLanguageSettings(input: { language: \"zh-TW\", timezone: \"Asia/Taipei\" }) { language timezone }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "ERROR: Profile: unknown time zone -> BAD_USER_INPUT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('BAD_USER_INPUT', () => pm.expect(pm.response.json().errors[0].extensions.code).to.eql('BAD_USER_INPUT'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation {\n  updateLanguageSettings(input: { timezone: \"Mars/Olympus_Mons\" }) { timezone }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Profile: updateTravelPreferences (Travel Preferences tab)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('no errors', () => pm.expect(body.errors).to.be.undefined);",
+                  "pm.test('saved, duplicates dropped', () => pm.expect(body.data.updateTravelPreferences).to.eql({ budgetLevel: 'MODERATE', travelStyles: ['NATURE', 'FOOD'] }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation {\n  updateTravelPreferences(input: { budgetLevel: MODERATE, travelStyles: [NATURE, FOOD, FOOD] }) { budgetLevel travelStyles }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Profile: save two tabs in one request (two mutations)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('no errors', () => pm.expect(body.errors).to.be.undefined);",
+                  "pm.test('only the language changed; timezone kept', () => pm.expect(body.data.updateLanguageSettings).to.eql({ language: 'en', timezone: 'Asia/Taipei' }));",
+                  "pm.test('only the budget changed; styles kept', () => pm.expect(body.data.updateTravelPreferences).to.eql({ budgetLevel: 'LUXURY', travelStyles: ['NATURE', 'FOOD'] }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation SaveProfile {\n  updateLanguageSettings(input: { language: \"en\" }) { language timezone }\n  updateTravelPreferences(input: { budgetLevel: LUXURY }) { budgetLevel travelStyles }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Profile: myLanguageSettings and myTravelPreferences queries",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('no errors', () => pm.expect(body.errors).to.be.undefined);",
+                  "pm.test('both tabs read back', () => { pm.expect(body.data.myLanguageSettings.timezone).to.eql('Asia/Taipei'); pm.expect(body.data.myTravelPreferences.budgetLevel).to.eql('LUXURY'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query {\n  myLanguageSettings { language timezone }\n  myTravelPreferences { budgetLevel travelStyles }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "The new user creates a trip (a GraphQL token works on the trip service)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Deleted with the account\",\n  \"destination\": \"Seoul\",\n  \"startDate\": \"2027-05-01\",\n  \"endDate\": \"2027-05-02\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "deleteMe removes the account and its trips",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('no errors', () => pm.expect(body.errors).to.be.undefined);",
+                  "pm.test('deleteMe is true', () => pm.expect(body.data.deleteMe).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation {\n  deleteMe\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "me after deleteMe is null",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('me is null', () => pm.expect(pm.response.json().data.me).to.eql(null));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Me {\n  me { id name email createdAt }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "The deleted user has no trips left",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('no trips', () => pm.expect(pm.response.json()).to.have.lengthOf(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{newToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/trips",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "trips"
               ]
             }
           }

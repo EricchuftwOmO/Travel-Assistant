@@ -1,13 +1,15 @@
 const ApiError = require('../helpers/ApiError');
 const { verifyToken } = require('../helpers/authHelper');
-const { findUserById } = require('../data/userQueries');
 
 const unauthorized = (res, message) => {
   res.set('WWW-Authenticate', 'Bearer');
   return new ApiError(401, message);
 };
 
-const requireAuth = async (req, res, next) => {
+// Checks the bearer token again (the gateway already did) so the service is safe
+// on its own. Accounts live in the user service; here a user is just the token's id.
+// When an account is deleted, the user service first deletes its trips here.
+const requireAuth = (req, res, next) => {
   const [scheme, token] = (req.get('Authorization') || '').split(' ');
   if (scheme !== 'Bearer' || !token) {
     throw unauthorized(res, 'A bearer token is required');
@@ -19,12 +21,11 @@ const requireAuth = async (req, res, next) => {
   } catch {
     throw unauthorized(res, 'Token is invalid or expired');
   }
+  if (!Number.isInteger(payload.userId) || payload.userId < 1) {
+    throw unauthorized(res, 'Token is invalid or expired');
+  }
 
-  // A token outlives its account, so a deleted user must be rejected here.
-  const user = await findUserById(payload.userId);
-  if (!user) throw unauthorized(res, 'Token is invalid or expired');
-
-  req.user = user;
+  req.user = { id: payload.userId };
   next();
 };
 

@@ -7,6 +7,8 @@ const swaggerUi = require('swagger-ui-express');
 const YAML = require('yaml');
 const db = require('./data/db');
 const routes = require('./routes');
+const requireAuth = require('./middleware/requireAuth');
+const { deleteMyData } = require('./controllers/tripController');
 const { notFound, errorHandler } = require('./middleware/errorHandlers');
 
 const specPath = path.join(__dirname, '..', 'openapi.yaml');
@@ -31,6 +33,9 @@ app.use('/docs', swaggerUi.serve, swaggerUi.setup(apiSpec));
 app.get('/openapi.yaml', (req, res) => res.type('application/yaml').sendFile(specPath));
 
 app.use('/api', routes);
+
+// Internal: not routed by the gateway. The user service calls it before deleting an account.
+app.delete('/internal/my-data', requireAuth, deleteMyData);
 
 app.use(notFound);
 app.use(errorHandler);

@@ -1,11 +1,10 @@
 const express = require('express');
-const userRoutes = require('./userRoutes');
 const tripRoutes = require('./tripRoutes');
 const placeRoutes = require('./placeRoutes');
 
+// Accounts and login moved to the user service. This router is mounted at /api.
 const router = express.Router();
 
-router.use('/', userRoutes);
 router.use('/trips', tripRoutes);
 router.use('/places', placeRoutes);
 

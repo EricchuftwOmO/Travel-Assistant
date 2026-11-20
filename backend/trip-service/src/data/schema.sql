@@ -1,14 +1,8 @@
-CREATE TABLE users (
-  id            SERIAL PRIMARY KEY,
-  name          TEXT NOT NULL,
-  email         TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
+-- owner_id is a user id from the user service (user_db). It is not a foreign key,
+-- because the users table lives in another service's database.
 CREATE TABLE trips (
   id          SERIAL PRIMARY KEY,
-  owner_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  owner_id    INTEGER NOT NULL,
   title       TEXT NOT NULL,
   destination TEXT NOT NULL,
   start_date  DATE NOT NULL,
@@ -49,3 +43,24 @@ CREATE TABLE itinerary_items (
   CONSTRAINT itinerary_items_position_key UNIQUE (itinerary_id, position)
     DEFERRABLE INITIALLY DEFERRED
 );
+
+-- Flights attached to a trip. The flight's details are copied from the flight
+-- service when it is attached, so the trip keeps them even if that flight changes
+-- or is removed there. flight_id is the flight service's id, not a foreign key.
+CREATE TABLE trip_flights (
+  id            SERIAL PRIMARY KEY,
+  trip_id       INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  flight_id     INTEGER,
+  airline       TEXT NOT NULL,
+  flight_number TEXT NOT NULL,
+  origin        TEXT NOT NULL,
+  destination   TEXT NOT NULL,
+  depart_at     TIMESTAMPTZ NOT NULL,
+  arrive_at     TIMESTAMPTZ NOT NULL,
+  price         NUMERIC(10, 2) NOT NULL,
+  currency      TEXT NOT NULL DEFAULT 'USD',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT trip_flights_trip_flight_key UNIQUE (trip_id, flight_id)
+);
+
+CREATE INDEX trip_flights_trip_id_idx ON trip_flights (trip_id);

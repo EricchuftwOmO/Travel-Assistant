@@ -1,0 +1,569 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { api } from '../api';
+import { useAuth } from '../auth';
+import { dayCount, formatDate, formatDateTime, formatMoney, formatRange } from '../format';
+import ErrorMessage from '../components/ErrorMessage';
+import Modal from '../components/Modal';
+import TripForm from '../components/TripForm';
+import PlaceMapPicker, { MAPS_API_KEY } from '../components/PlaceMapPicker';
+
+// Screen 03: an Overview tab plus one tab per travel day. The tab is kept in the URL (?day=2).
+export default function TripDetailsPage() {
+  const { tripId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [trip, setTrip] = useState(null);
+  const [days, setDays] = useState([]);
+  const [error, setError] = useState(null);
+  const [editing, setEditing] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [loadedTrip, loadedDays] = await Promise.all([
+        api(`/api/trips/${tripId}`),
+        api(`/api/trips/${tripId}/itineraries`),
+      ]);
+      setTrip(loadedTrip);
+      setDays(loadedDays);
+      setError(null);
+    } catch (err) {
+      setError(err);
+    }
+  }, [tripId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const activeDay = Number(searchParams.get('day')) || 0;
+  const selectTab = (day) => setSearchParams(day ? { day: String(day) } : {}, { replace: true });
+
+  if (error && !trip) {
+    return (
+      <div className="page">
+        <Link to="/trips" className="back-link">← My Trips</Link>
+        <ErrorMessage error={error} />
+      </div>
+    );
+  }
+  if (!trip) return <p className="muted page">Loading trip…</p>;
+
+  return (
+    <div className="page">
+      <Link to="/trips" className="back-link">← My Trips</Link>
+      <div className="page-header">
+        <div>
+          <h1>{trip.title}</h1>
+          <p className="muted">
+            {formatRange(trip.startDate, trip.endDate)} · {dayCount(trip.startDate, trip.endDate)} days · {trip.destination}
+          </p>
+        </div>
+        <button type="button" className="btn btn-ghost" onClick={() => setEditing(true)}>
+          Edit trip
+        </button>
+      </div>
+
+      <div className="tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={activeDay === 0} onClick={() => selectTab(0)}>
+          Overview
+        </button>
+        {days.map((day) => (
+          <button
+            key={day.id}
+            type="button"
+            role="tab"
+            aria-selected={activeDay === day.dayNumber}
+            onClick={() => selectTab(day.dayNumber)}
+          >
+            Day {day.dayNumber}
+          </button>
+        ))}
+      </div>
+
+      {activeDay === 0 ? (
+        <OverviewTab trip={trip} onChanged={load} />
+      ) : (
+        <DayTab key={activeDay} trip={trip} dayNumber={activeDay} />
+      )}
+
+      {editing && (
+        <EditTripDialog
+          trip={trip}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            selectTab(0);
+            load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function OverviewTab({ trip, onChanged }) {
+  const [error, setError] = useState(null);
+
+  const removeFlight = async (flight) => {
+    if (!window.confirm(`Remove ${flight.airline} ${flight.flightNumber} from this trip?`)) return;
+    try {
+      await api(`/api/trips/${trip.id}/flights/${flight.id}`, { method: 'DELETE' });
+      onChanged();
+    } catch (err) {
+      setError(err);
+    }
+  };
+
+  return (
+    <div className="overview-grid">
+      <section className="card">
+        <div className="card-header">
+          <h2>Flights</h2>
+          <Link to="/flights" className="btn btn-ghost btn-sm">+ Find a flight</Link>
+        </div>
+        <ErrorMessage error={error} />
+        {trip.flights.length === 0 ? (
+          <p className="muted">No flight yet. Flights are optional.</p>
+        ) : (
+          <ul className="plain-list">
+            {trip.flights.map((flight) => (
+              <li key={flight.id} className="row-item">
+                <div>
+                  <strong>
+                    {flight.origin} → {flight.destination}
+                  </strong>{' '}
+                  · {flight.airline} {flight.flightNumber}
+                  <div className="muted small">
+                    {formatDateTime(flight.departAt)} → {formatDateTime(flight.arriveAt)} ·{' '}
+                    {formatMoney(flight.price, flight.currency)}
+                  </div>
+                </div>
+                <button type="button" className="icon-btn" aria-label="Remove flight" onClick={() => removeFlight(flight)}>
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <AdvicePanel trip={trip} />
+
+      <section className="card card-muted">
+        <h2>Trip members &amp; shared expenses</h2>
+        <p className="muted">Inviting members and splitting costs is planned for a later version.</p>
+      </section>
+    </div>
+  );
+}
+
+const TOPICS = ['general', 'itinerary', 'food', 'packing', 'budget', 'safety'];
+
+// Item 5: the AI Travel Assistant (LLM service). Answers are saved, so earlier ones are listed.
+function AdvicePanel({ trip }) {
+  const { user } = useAuth();
+  const [prompt, setPrompt] = useState('');
+  const [topic, setTopic] = useState('itinerary');
+  const [answers, setAnswers] = useState([]);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api(`/api/advice?userId=${encodeURIComponent(user.id)}&tripId=${trip.id}&sort=created_at&order=desc&limit=5`)
+      .then((result) => setAnswers(result.data))
+      .catch(() => setAnswers([]));
+  }, [trip.id, user.id]);
+
+  const ask = async (event) => {
+    event.preventDefault();
+    if (!prompt.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const fullPrompt = `${prompt.trim()}\n\n(Trip: ${trip.title}, ${trip.destination}, ${trip.startDate} to ${trip.endDate})`;
+      const advice = await api('/api/advice', {
+        method: 'POST',
+        body: { user_id: String(user.id), trip_id: trip.id, topic, prompt: fullPrompt.slice(0, 1000) },
+      });
+      setAnswers((current) => [advice, ...current]);
+      setPrompt('');
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="card advice-card">
+      <h2>AI Travel Assistant</h2>
+      <form className="form" onSubmit={ask}>
+        <textarea
+          rows={3}
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
+          placeholder={`e.g. What should I pack for ${trip.destination}?`}
+          maxLength={800}
+        />
+        <div className="field-row">
+          <select value={topic} onChange={(event) => setTopic(event.target.value)} aria-label="Topic">
+            {TOPICS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <button type="submit" className="btn btn-primary" disabled={busy || !prompt.trim()}>
+            {busy ? 'Thinking…' : 'Ask'}
+          </button>
+        </div>
+      </form>
+      <ErrorMessage error={error} />
+      <ul className="advice-list">
+        {answers.map((advice) => (
+          <li key={advice.id}>
+            <p className="advice-q">{advice.prompt.split('\n\n(Trip:')[0]}</p>
+            <p className="advice-a">{advice.content}</p>
+            {advice.source === 'stub' && <span className="badge">placeholder: no LLM key set</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function DayTab({ trip, dayNumber }) {
+  const [day, setDay] = useState(null);
+  const [error, setError] = useState(null);
+  const [adding, setAdding] = useState(null); // null, or the position to insert at
+  const [dragIndex, setDragIndex] = useState(null);
+
+  const base = `/api/trips/${trip.id}/itineraries/${dayNumber}`;
+
+  const load = useCallback(async () => {
+    try {
+      setDay(await api(base));
+      setError(null);
+    } catch (err) {
+      setError(err);
+    }
+  }, [base]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const saveOrder = async (items) => {
+    setDay((current) => ({ ...current, items })); // show the new order right away
+    try {
+      setDay(await api(`${base}/items/order`, { method: 'PUT', body: { itemIds: items.map((item) => item.id) } }));
+    } catch (err) {
+      setError(err);
+      load();
+    }
+  };
+
+  const move = (from, to) => {
+    if (to < 0 || to >= day.items.length || from === to) return;
+    const items = [...day.items];
+    const [moved] = items.splice(from, 1);
+    items.splice(to, 0, moved);
+    saveOrder(items);
+  };
+
+  const remove = async (item) => {
+    try {
+      await api(`${base}/items/${item.id}`, { method: 'DELETE' });
+      load();
+    } catch (err) {
+      setError(err);
+    }
+  };
+
+  if (!day) return error ? <ErrorMessage error={error} /> : <p className="muted">Loading day…</p>;
+
+  return (
+    <section className="card">
+      <div className="card-header">
+        <div>
+          <h2>Day {day.dayNumber}</h2>
+          <p className="muted small">{formatDate(day.date)}</p>
+        </div>
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => setAdding(day.items.length + 1)}>
+          + Add place
+        </button>
+      </div>
+
+      <ErrorMessage error={error} />
+
+      {day.items.length === 0 ? (
+        <div className="empty">Nothing planned for this day yet.</div>
+      ) : (
+        <ol className="itinerary">
+          {day.items.map((item, index) => (
+            <li
+              key={item.id}
+              className={`itinerary-item${dragIndex === index ? ' dragging' : ''}`}
+              draggable
+              onDragStart={() => setDragIndex(index)}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={() => {
+                move(dragIndex, index);
+                setDragIndex(null);
+              }}
+              onDragEnd={() => setDragIndex(null)}
+            >
+              <span className="drag-handle" aria-hidden="true">⋮⋮</span>
+              <span className="position">{String(index + 1).padStart(2, '0')}</span>
+              <div className="place-info">
+                <strong>{item.place.name}</strong>
+                <span className="muted small">
+                  {item.place.address || `${item.place.city} · ${item.place.category}`}
+                </span>
+              </div>
+              <div className="item-actions">
+                <button type="button" className="icon-btn" aria-label="Move up" disabled={index === 0} onClick={() => move(index, index - 1)}>
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Move down"
+                  disabled={index === day.items.length - 1}
+                  onClick={() => move(index, index + 1)}
+                >
+                  ↓
+                </button>
+                <button type="button" className="icon-btn" aria-label="Insert a place here" title="Insert a place here" onClick={() => setAdding(index + 1)}>
+                  +
+                </button>
+                <button type="button" className="icon-btn danger" aria-label="Remove" onClick={() => remove(item)}>
+                  ✕
+                </button>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+      <p className="muted small">Drag places, or use the arrows, to change the order.</p>
+
+      {adding !== null && (
+        <AddPlaceDialog
+          trip={trip}
+          base={base}
+          dayItems={day.items}
+          itemCount={day.items.length}
+          initialPosition={adding}
+          onClose={() => setAdding(null)}
+          onAdded={() => {
+            setAdding(null);
+            load();
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+// Google map when both keys are set up; otherwise (or on request) the sample catalog.
+function AddPlaceDialog({ trip, base, dayItems, itemCount, initialPosition, onClose, onAdded }) {
+  const [mode, setMode] = useState(MAPS_API_KEY ? 'checking' : 'catalog');
+  const [googleReady, setGoogleReady] = useState(false);
+
+  useEffect(() => {
+    if (!MAPS_API_KEY) return;
+    api('/api/places/config')
+      .then((config) => {
+        setGoogleReady(config.googlePlaces);
+        setMode(config.googlePlaces ? 'map' : 'catalog');
+      })
+      .catch(() => setMode('catalog'));
+  }, []);
+
+  const addGooglePlace = async ({ googlePlaceId, position }) => {
+    await api(`${base}/items`, { method: 'POST', body: { googlePlaceId, position } });
+    onAdded();
+  };
+
+  if (mode === 'checking') {
+    return (
+      <Modal title="Add a place" onClose={onClose} wide>
+        <p className="muted">Loading the map…</p>
+      </Modal>
+    );
+  }
+
+  if (mode === 'map') {
+    return (
+      <Modal title="Add a place" onClose={onClose} wide>
+        <PlaceMapPicker
+          trip={trip}
+          plannedItems={dayItems}
+          itemCount={itemCount}
+          initialPosition={initialPosition}
+          onAdd={addGooglePlace}
+        />
+        <button type="button" className="link-btn small" onClick={() => setMode('catalog')}>
+          Use the sample place list instead
+        </button>
+      </Modal>
+    );
+  }
+
+  return (
+    <CatalogPlaceDialog
+      trip={trip}
+      base={base}
+      itemCount={itemCount}
+      initialPosition={initialPosition}
+      onClose={onClose}
+      onAdded={onAdded}
+      mapAvailable={googleReady}
+      onUseMap={() => setMode('map')}
+    />
+  );
+}
+
+// The sample catalog (GET /api/places): works without any Google key.
+function CatalogPlaceDialog({ trip, base, itemCount, initialPosition, onClose, onAdded, mapAvailable, onUseMap }) {
+  const [city, setCity] = useState(trip.destination);
+  const [category, setCategory] = useState('');
+  const [places, setPlaces] = useState(null);
+  const [position, setPosition] = useState(initialPosition);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (city.trim()) params.set('city', city.trim());
+    if (category) params.set('category', category);
+    const timer = setTimeout(() => {
+      api(`/api/places?${params}`).then(setPlaces).catch(setError);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [city, category]);
+
+  const add = async (place) => {
+    try {
+      await api(`${base}/items`, { method: 'POST', body: { placeId: place.id, position } });
+      onAdded();
+    } catch (err) {
+      setError(err);
+    }
+  };
+
+  return (
+    <Modal title="Add a place" onClose={onClose} wide>
+      <div className="field-row">
+        <label className="field">
+          <span>City</span>
+          <input value={city} onChange={(event) => setCity(event.target.value)} placeholder="Any city" />
+        </label>
+        <label className="field">
+          <span>Category</span>
+          <select value={category} onChange={(event) => setCategory(event.target.value)}>
+            <option value="">Any</option>
+            {['attraction', 'food', 'museum', 'nature', 'shopping'].map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Insert at position</span>
+          <select value={position} onChange={(event) => setPosition(Number(event.target.value))}>
+            {Array.from({ length: itemCount + 1 }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>
+                #{n}
+                {n === itemCount + 1 ? ' (end)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <ErrorMessage error={error} />
+      {mapAvailable ? (
+        <button type="button" className="link-btn small" onClick={onUseMap}>
+          Pick on the Google map instead
+        </button>
+      ) : (
+        <p className="hint small">Showing sample places. Set a Google Maps key to pick places on a map.</p>
+      )}
+      {places === null ? (
+        <p className="muted">Searching…</p>
+      ) : places.length === 0 ? (
+        <div className="empty">
+          No places found{city ? ` in "${city}"` : ''}.{' '}
+          {city && (
+            <button type="button" className="link-btn" onClick={() => setCity('')}>
+              Show every city
+            </button>
+          )}
+        </div>
+      ) : (
+        <ul className="place-results">
+          {places.map((place) => (
+            <li key={place.id} className="row-item">
+              <div>
+                <strong>{place.name}</strong>
+                <div className="muted small">
+                  {place.city} · {place.category}
+                </div>
+              </div>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => add(place)}>
+                Add at #{position}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
+  );
+}
+
+function EditTripDialog({ trip, onClose, onSaved }) {
+  const navigate = useNavigate();
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const save = async (form) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/trips/${trip.id}`, {
+        method: 'PUT',
+        body: { title: form.title, destination: form.destination, startDate: form.startDate, endDate: form.endDate },
+      });
+      onSaved();
+    } catch (err) {
+      setError(err);
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!window.confirm(`Delete "${trip.title}" with all its days and flights? This cannot be undone.`)) return;
+    try {
+      await api(`/api/trips/${trip.id}`, { method: 'DELETE' });
+      navigate('/trips');
+    } catch (err) {
+      setError(err);
+    }
+  };
+
+  return (
+    <Modal title="Edit trip" onClose={onClose}>
+      <ErrorMessage error={error} />
+      <TripForm
+        initial={{ title: trip.title, destination: trip.destination, startDate: trip.startDate, endDate: trip.endDate }}
+        onSubmit={save}
+        submitLabel="Save changes"
+        busy={busy}
+      />
+      <hr />
+      <button type="button" className="btn btn-danger" onClick={remove}>
+        Delete trip
+      </button>
+    </Modal>
+  );
+}

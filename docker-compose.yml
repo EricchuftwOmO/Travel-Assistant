@@ -1,5 +1,6 @@
 # Starts every service: docker compose up --build / docker compose down
-# Clients talk only to the gateway (http://localhost:8080); other services are reached by service name.
+# The web app is at http://localhost:5173. It talks only to the gateway (http://localhost:8080);
+# services reach each other by service name.
 # One PostgreSQL server (a database per service) and one Redis GET cache shared by four services.
 # Set GROQ_API_KEY for real LLM answers and JWT_SECRET to sign login tokens, in .env.
 
@@ -10,6 +11,7 @@ services:
       - "8080:8080"
     environment:
       PORT: 8080
+      USER_SERVICE_URL: http://user-service:3009
       TRIP_SERVICE_URL: http://trip-service:3001
       SEARCH_SERVICE_URL: http://activity-service:3007
       BUDGET_SERVICE_URL: http://budget-service:3003
@@ -19,6 +21,22 @@ services:
       LLM_SERVICE_URL: http://llm-service:3008
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
       JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+    restart: unless-stopped
+
+  # The React app: http://localhost:5173 (it calls the gateway on port 8080)
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8080
+        # The map in Add place. Uses GOOGLE_MAPS_API_KEY, or the Places key if only that one is set.
+        # Built into the app: run docker compose up --build frontend after changing it.
+        VITE_GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-${GOOGLE_PLACES_API_KEY:-}}
+        VITE_GOOGLE_MAP_ID: ${GOOGLE_MAP_ID:-}
+    ports:
+      - "5173:80"
+    depends_on:
+      - gateway
     restart: unless-stopped
 
   postgres:
@@ -44,6 +62,27 @@ services:
       retries: 10
     restart: unless-stopped
 
+  user-service:
+    build: ./backend/user-service
+    ports:
+      - "127.0.0.1:3009:3009"   # dev only: Swagger UI at http://localhost:3009/docs
+    environment:
+      PORT: 3009
+      DATABASE_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/user_db
+      # Signs login tokens. Set a long random JWT_SECRET in .env; the default is for local development only.
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+      # Deleting an account first deletes the user's trips there
+      TRIP_SERVICE_URL: http://trip-service:3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3009/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
   trip-service:
     build: ./backend/trip-service
     ports:
@@ -51,8 +90,12 @@ services:
     environment:
       PORT: 3001
       DATABASE_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/trip_db
-      # Signs login tokens. Set a long random JWT_SECRET in .env; the default is for local development only.
+      # Checks the login tokens the user service signs (same secret)
       JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+      # Attaching a flight to a trip copies its details from the flight service
+      FLIGHT_SERVICE_URL: http://flight-service:3004
+      # Google Places API (New): nearby places for the Add place map. Empty = sample places only.
+      GOOGLE_PLACES_API_KEY: ${GOOGLE_PLACES_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

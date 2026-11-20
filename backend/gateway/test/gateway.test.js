@@ -63,6 +63,7 @@ before(async () => {
         logRequests: false,
         jwtSecret: SECRET,
         services: {
+            user: { url: await echoService('user'), timeoutMs: 1000 },
             trip: { url: await echoService('trip'), timeoutMs: 1000 },
             search: { url: await echoService('search'), timeoutMs: 1000 },
             budget: { url: await echoService('budget'), timeoutMs: 1000 },
@@ -89,8 +90,10 @@ test('routes each path to the owning service', async () => {
         ['/api/trips/1/items', 'trip'],
         ['/api/trips/1/budget', 'budget'],
         ['/api/trips/1/itineraries/2/items', 'trip'],
-        ['/api/auth/login', 'trip'],
-        ['/api/users/me', 'trip'],
+        ['/api/auth/login', 'user'],
+        ['/api/users/me', 'user'],
+        ['/api/graphql', 'user'],
+        ['/api/trips/1/flights', 'trip'],
         ['/api/places?city=Tokyo', 'trip'],
         ['/api/activities/search?city=seattle', 'search'],
         ['/api/budget/estimate', 'budget'],
@@ -237,8 +240,9 @@ test('login check: protected routes need a valid token', async () => {
 
 test('login check: public routes need no token', async () => {
     for (const [method, path, service] of [
-        ['POST', '/api/auth/login', 'trip'],
-        ['POST', '/api/auth/register', 'trip'],
+        ['POST', '/api/auth/login', 'user'],
+        ['POST', '/api/auth/register', 'user'],
+        ['POST', '/api/graphql', 'user'],
         ['GET', '/api/flights?origin=SEA', 'flight'],
         ['GET', '/api/hotels', 'hotel'],
     ]) {

@@ -1,0 +1,183 @@
+openapi: 3.0.3
+info:
+  title: Travel Assistant - User Service
+  version: 1.0.0
+  description: |
+    Accounts, login and the My Profile page. The main API is **GraphQL** at `POST /graphql`
+    (through the gateway: `POST /api/graphql`). The schema text is at `GET /graphql/schema`.
+
+    Login tokens are JWTs (HS256, 1 hour) signed with `JWT_SECRET`; the gateway and the trip
+    service check them with the same secret. Send them as `Authorization: Bearer <token>`.
+
+    Example queries:
+
+    ```graphql
+    mutation { login(email: "alice@example.com", password: "Password123!") { token user { id name } } }
+    query { me { id name email createdAt } }
+    mutation { deleteMe }
+    ```
+
+    My Profile (three tabs). Omitted fields stay as they are; `null` clears an optional field.
+    Several tabs can be saved in one request by sending several mutations:
+
+    ```graphql
+    query { me { firstName lastName gender dateOfBirth phone country email
+                 languageSettings { language timezone }
+                 travelPreferences { budgetLevel travelStyles } } }
+    mutation {
+      updateBasicInfo(input: { firstName: "Chun-Wei", lastName: "Chu", gender: MALE,
+                               dateOfBirth: "2000-05-10", phone: "+1 (253) 555-0198", country: "United States" }) { name }
+      updateLanguageSettings(input: { language: "zh-TW", timezone: "Asia/Taipei" }) { language timezone }
+      updateTravelPreferences(input: { budgetLevel: MODERATE, travelStyles: [NATURE, FOOD] }) { travelStyles }
+    }
+    ```
+
+    GraphQL errors carry `extensions.code`: `BAD_USER_INPUT` (400), `UNAUTHENTICATED` (401),
+    `CONFLICT` (409, email taken), `UPSTREAM_UNAVAILABLE` (502), `GRAPHQL_VALIDATION_FAILED`.
+servers:
+  - url: http://localhost:8080
+    description: Through the API gateway
+  - url: http://localhost:3009
+    description: The user service directly (development)
+tags:
+  - name: GraphQL
+  - name: Auth
+  - name: Health
+paths:
+  /api/graphql:
+    post:
+      tags: [GraphQL]
+      summary: Run a GraphQL query or mutation
+      description: Public at the gateway; `me`, `updateMe` and `deleteMe` need a bearer token.
+      security: [{}, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string, example: 'query { me { id name email } }' }
+                variables: { type: object, additionalProperties: true }
+                operationName: { type: string }
+      responses:
+        '200':
+          description: The query ran. Field errors, if any, are listed in `errors`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GraphQLResponse' }
+        '400':
+          description: The query is missing, malformed, or does not match the schema.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GraphQLResponse' }
+  /api/graphql/schema:
+    get:
+      tags: [GraphQL]
+      summary: The GraphQL schema (SDL text)
+      responses:
+        '200':
+          description: Schema definition language
+          content:
+            text/plain:
+              schema: { type: string }
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Create an account (REST; same as the register mutation)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, maxLength: 100, example: Dana Lee }
+                email: { type: string, format: email, example: dana@example.com }
+                password: { type: string, minLength: 8, example: Password123! }
+      responses:
+        '201':
+          description: Created; returns the user and a token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthPayload' }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in (REST; same as the login mutation)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, example: alice@example.com }
+                password: { type: string, example: Password123! }
+      responses:
+        '200':
+          description: The user and a token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthPayload' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+  /health:
+    get:
+      tags: [Health]
+      summary: Service and database health
+      responses:
+        '200': { description: Up }
+        '503': { description: Database unavailable }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { type: string, example: BAD_REQUEST }
+                  message: { type: string }
+                  details: { type: array, items: { type: string } }
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: Alice Chen }
+        email: { type: string, example: alice@example.com }
+        createdAt: { type: string, format: date-time }
+    AuthPayload:
+      type: object
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        token: { type: string }
+    GraphQLResponse:
+      type: object
+      properties:
+        data: { type: object, nullable: true, additionalProperties: true }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              message: { type: string }
+              path: { type: array, items: { type: string } }
+              extensions:
+                type: object
+                properties:
+                  code: { type: string, example: UNAUTHENTICATED }
+                  status: { type: integer, example: 401 }
+                  details: { type: array, items: { type: string } }

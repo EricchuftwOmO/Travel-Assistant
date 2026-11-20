@@ -3,11 +3,11 @@ info:
   title: Travel Assistant API
   version: 0.2.0
   description: Single entry point for the Travel Assistant frontend. The API gateway forwards every /api/*
-    request to the service that owns it (Trip, Activity, Budget, Flight, Hotel, Car Rental, LLM advice) and
+    request to the service that owns it (User, Trip, Activity, Budget, Flight, Hotel, Car Rental, LLM advice) and
     checks the login token (bearer JWT) on every route except sign-up, login and reading flights, hotels,
     car rentals and activities, and adds CORS, X-Request-Id tracing, timeouts and uniform errors. Only the endpoints implemented so far are
     listed here. Each service also publishes its own spec and Swagger UI at /docs on its development port
-    (3001 trips and accounts, 3004 flights, 3005 hotels, 3006 car rentals, 3007 activities, 3008 advice).
+    (3009 accounts and GraphQL, 3001 trips, 3004 flights, 3005 hotels, 3006 car rentals, 3007 activities, 3008 advice).
 servers:
   - url: http://localhost:8080
     description: API gateway (Docker Compose and default local port)
@@ -157,93 +157,83 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
       security: []
-  /api/users/me:
-    get:
+  /api/graphql:
+    post:
       tags:
         - Users
-      summary: Get my account
-      operationId: getMe
-      responses:
-        "200":
-          description: The signed-in user
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-              example:
-                id: 1
-                name: Alice Chen
-                email: alice@example.com
-                createdAt: 2026-11-06T18:00:00.000Z
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "500":
-          $ref: "#/components/responses/ServerError"
-        "502":
-          $ref: "#/components/responses/UpstreamUnavailable"
-        "504":
-          $ref: "#/components/responses/UpstreamTimeout"
-      security:
-        - bearerAuth: []
-    put:
-      tags:
-        - Users
-      summary: Update my account
-      description: Replaces the name and email. The password cannot be changed through this endpoint.
-      operationId: updateMe
+      summary: User service GraphQL API (login, register, My Profile, deleteMe)
+      description: |
+        Owned by the user service. Public at the gateway; the user service checks the bearer token
+        for `me`, `updateMe` and `deleteMe`. Field errors come back with HTTP 200 in `errors[]` with
+        `extensions.code` (BAD_USER_INPUT, UNAUTHENTICATED, CONFLICT, UPSTREAM_UNAVAILABLE). A query
+        that does not match the schema returns 400 GRAPHQL_VALIDATION_FAILED. Schema text: GET /api/graphql/schema.
+
+        ```graphql
+        type User {
+          id: ID!  firstName: String!  lastName: String!  name: String!  email: String!
+          gender: Gender  dateOfBirth: Date  phone: String  country: String  createdAt: String!
+          languageSettings: LanguageSettings!  travelPreferences: TravelPreferences!
+        }
+        type Query { me: User  myLanguageSettings: LanguageSettings  myTravelPreferences: TravelPreferences }
+        type Mutation {
+          register(input: RegisterInput!): AuthPayload!
+          login(email: String!, password: String!): AuthPayload!
+          updateBasicInfo(input: UpdateBasicInfoInput!): User!
+          updateLanguageSettings(input: UpdateLanguageSettingsInput!): LanguageSettings!
+          updateTravelPreferences(input: UpdateTravelPreferencesInput!): TravelPreferences!
+          updateMe(input: ProfileInput!): User!
+          deleteMe: Boolean!
+        }
+        ```
+      operationId: graphql
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProfileRequest"
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                variables:
+                  type: object
+                  additionalProperties: true
+                operationName:
+                  type: string
             example:
-              name: Alice Chen-Wu
-              email: alice@example.com
+              query: "mutation Login($email: String!, $password: String!) { login(email: $email, password: $password) { token user { id name } } }"
+              variables:
+                email: alice@example.com
+                password: Password123!
       responses:
         "200":
-          description: Account updated
+          description: The operation ran; check `errors` for field errors
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/User"
               example:
-                id: 1
-                name: Alice Chen-Wu
-                email: alice@example.com
-                createdAt: 2026-11-06T18:00:00.000Z
+                data:
+                  login:
+                    token: eyJhbGciOiJIUzI1NiIs...
+                    user:
+                      id: "1"
+                      name: Alice Chen
         "400":
-          $ref: "#/components/responses/ValidationError"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "409":
-          $ref: "#/components/responses/EmailConflict"
-        "500":
-          $ref: "#/components/responses/ServerError"
+          description: Missing query, or the query does not match the schema
+          content:
+            application/json:
+              example:
+                errors:
+                  - message: Cannot query field "password" on type "User".
+                    extensions:
+                      code: GRAPHQL_VALIDATION_FAILED
         "502":
           $ref: "#/components/responses/UpstreamUnavailable"
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
       security:
-        - bearerAuth: []
-    delete:
-      tags:
-        - Users
-      summary: Delete my account
-      description: Permanently deletes the account and all of its trips. Existing tokens stop working immediately.
-      operationId: deleteMe
-      responses:
-        "204":
-          description: Account and trips deleted
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "500":
-          $ref: "#/components/responses/ServerError"
-        "502":
-          $ref: "#/components/responses/UpstreamUnavailable"
-        "504":
-          $ref: "#/components/responses/UpstreamTimeout"
-      security:
+        - {}
         - bearerAuth: []
   /api/trips:
     post:
@@ -477,6 +467,105 @@ paths:
           $ref: "#/components/responses/UpstreamUnavailable"
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
+      security:
+        - bearerAuth: []
+  /api/trips/{tripId}/flights:
+    parameters:
+      - name: tripId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags:
+        - Trips
+      summary: List the flights attached to a trip
+      operationId: listTripFlights
+      responses:
+        "200":
+          description: The trip's flights, earliest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TripFlight"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      security:
+        - bearerAuth: []
+    post:
+      tags:
+        - Trips
+      summary: Attach a flight from the flight service
+      description: The trip service reads the flight from the flight service and copies its details onto the trip.
+      operationId: addTripFlight
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - flightId
+              properties:
+                flightId:
+                  type: integer
+                  minimum: 1
+            example:
+              flightId: 1
+      responses:
+        "201":
+          description: Flight attached
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TripFlight"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The flight is already on this trip
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+      security:
+        - bearerAuth: []
+  /api/trips/{tripId}/flights/{tripFlightId}:
+    delete:
+      tags:
+        - Trips
+      summary: Remove a flight from a trip
+      operationId: removeTripFlight
+      parameters:
+        - name: tripId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: tripFlightId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "204":
+          description: Removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
       security:
         - bearerAuth: []
   /api/trips/{tripId}/itineraries:
@@ -864,6 +953,77 @@ paths:
           $ref: "#/components/responses/UpstreamUnavailable"
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
+      security:
+        - bearerAuth: []
+  /api/places/config:
+    get:
+      tags: [Places]
+      summary: Whether Google Places is available
+      description: The app shows the Google map in Add place when this is true, and the sample catalog otherwise.
+      responses:
+        '200':
+          description: Configuration
+          content:
+            application/json:
+              example:
+                googlePlaces: true
+      security:
+        - bearerAuth: []
+  /api/places/nearby:
+    get:
+      tags: [Places]
+      summary: Popular Google places around a point (the visible map area)
+      description: |
+        Proxies Google Places API (New) Nearby Search with the server's key, asking only for the fields the
+        app shows. Answers are cached for 5 minutes per ~100 m area, so small map moves do not call Google again.
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number, minimum: -90, maximum: 90 }, example: 25.034 }
+        - { name: lng, in: query, required: true, schema: { type: number, minimum: -180, maximum: 180 }, example: 121.5645 }
+        - { name: radius, in: query, description: Meters (default 1500), schema: { type: number, minimum: 100, maximum: 50000 } }
+        - { name: category, in: query, schema: { type: string, enum: [attraction, food, museum, nature, shopping] } }
+        - { name: language, in: query, description: 'Language of names, e.g. en, zh-TW (default en)', schema: { type: string } }
+      responses:
+        '200':
+          description: Up to 20 places, most popular first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GooglePlace'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          description: Google Places failed or rejected the key
+        '503':
+          description: No GOOGLE_PLACES_API_KEY on the server, or the Google quota is used up
+      security:
+        - bearerAuth: []
+  /api/places/locate:
+    get:
+      tags: [Places]
+      summary: Where a destination is (to center the map)
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string }, example: Tokyo }
+        - { name: language, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Location and viewport
+          content:
+            application/json:
+              example:
+                name: Tokyo
+                lat: 35.6764
+                lng: 139.65
+                viewport: { north: 35.8984, east: 139.9188, south: 35.5014, west: 139.5629 }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          description: Google found nothing for q
+        '503':
+          description: No GOOGLE_PLACES_API_KEY on the server
       security:
         - bearerAuth: []
   /api/flights:
@@ -2145,6 +2305,60 @@ paths:
           $ref: "#/components/responses/NotFound"
 components:
   schemas:
+    GooglePlace:
+      type: object
+      description: A place from Google Places, as returned by /places/nearby.
+      properties:
+        googlePlaceId: { type: string, example: ChIJH56c2rarQjQRphD9gvC8BhI }
+        name: { type: string, example: Taipei 101 }
+        address: { type: string, nullable: true }
+        lat: { type: number, example: 25.0339639 }
+        lng: { type: number, example: 121.5644722 }
+        category: { type: string, enum: [attraction, food, museum, nature, shopping] }
+        type: { type: string, nullable: true, example: Tourist attraction }
+        rating: { type: number, nullable: true, example: 4.6 }
+        ratingCount: { type: integer, nullable: true, example: 98765 }
+    TripFlight:
+      type: object
+      description: A flight attached to a trip (details copied from the flight service).
+      properties:
+        id:
+          type: integer
+          example: 1
+        tripId:
+          type: integer
+          example: 1
+        flightId:
+          type: integer
+          nullable: true
+          example: 1
+        airline:
+          type: string
+          example: Alaska Airlines
+        flightNumber:
+          type: string
+          example: AS 21
+        origin:
+          type: string
+          example: SEA
+        destination:
+          type: string
+          example: HND
+        departAt:
+          type: string
+          format: date-time
+        arriveAt:
+          type: string
+          format: date-time
+        price:
+          type: number
+          example: 845.5
+        currency:
+          type: string
+          example: USD
+        createdAt:
+          type: string
+          format: date-time
     RegisterRequest:
       type: object
       required:
@@ -2351,13 +2565,20 @@ components:
             $ref: "#/components/schemas/ItineraryItem"
     NewItemRequest:
       type: object
-      required:
-        - placeId
+      description: Send either placeId (sample catalog) or googlePlaceId (Google Places), not both.
       properties:
         placeId:
           type: integer
           minimum: 1
-          description: ID from `GET /places`
+          description: ID from `GET /places` (the sample catalog)
+        googlePlaceId:
+          type: string
+          description: |
+            A place ID from `GET /places/nearby`. The service reads the place from Google and saves its
+            name, address and location. 503 when the server has no Google key.
+        language:
+          type: string
+          description: Language of the saved name, e.g. en or zh-TW (default en)
         position:
           type: integer
           minimum: 1
