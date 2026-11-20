@@ -13,7 +13,8 @@ export default function LoginPage() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  if (user) return <Navigate to={location.state?.from || '/trips'} replace />;
+  // Already signed in (e.g. opened /login directly): nothing to do here.
+  if (user && !busy) return <Navigate to="/trips" replace />;
 
   const set = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
 
@@ -27,7 +28,10 @@ export default function LoginPage() {
           ? await userApi.login(form.email, form.password)
           : await userApi.register({ name: form.name, email: form.email, password: form.password });
       signIn(result);
-      navigate(location.state?.from || '/trips', { replace: true });
+      // The saved page belongs to whoever was signed in before (e.g. their trip), so a brand-new
+      // account always starts at My Trips. A returning user goes back to where they were.
+      const destination = mode === 'login' ? location.state?.from || '/trips' : '/trips';
+      navigate(destination, { replace: true });
     } catch (err) {
       setError(err);
     } finally {

@@ -38,6 +38,19 @@ export default function TripDetailsPage() {
   const selectTab = (day) => setSearchParams(day ? { day: String(day) } : {}, { replace: true });
 
   if (error && !trip) {
+    // 404 also covers another user's trip: the service does not say which, to keep trips private.
+    if (error.status === 404) {
+      return (
+        <div className="page">
+          <div className="card not-found">
+            <span className="not-found-icon" aria-hidden="true">🧭</span>
+            <h1>This trip isn't available</h1>
+            <p className="muted">It may have been deleted, or it belongs to another account.</p>
+            <Link to="/trips" className="btn btn-primary">Go to My Trips</Link>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="page">
         <Link to="/trips" className="back-link">← My Trips</Link>
