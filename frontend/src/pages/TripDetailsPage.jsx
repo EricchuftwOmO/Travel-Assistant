@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import { useAuth } from '../auth';
 import { dayCount, formatDate, formatDateTime, formatMoney, formatRange } from '../format';
 import ErrorMessage from '../components/ErrorMessage';
 import Modal from '../components/Modal';
@@ -147,88 +146,12 @@ function OverviewTab({ trip, onChanged }) {
         )}
       </section>
 
-      <AdvicePanel trip={trip} />
 
       <section className="card card-muted">
         <h2>Trip members &amp; shared expenses</h2>
         <p className="muted">Inviting members and splitting costs is planned for a later version.</p>
       </section>
     </div>
-  );
-}
-
-const TOPICS = ['general', 'itinerary', 'food', 'packing', 'budget', 'safety'];
-
-// Item 5: the AI Travel Assistant (LLM service). Answers are saved, so earlier ones are listed.
-function AdvicePanel({ trip }) {
-  const { user } = useAuth();
-  const [prompt, setPrompt] = useState('');
-  const [topic, setTopic] = useState('itinerary');
-  const [answers, setAnswers] = useState([]);
-  const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    api(`/api/advice?userId=${encodeURIComponent(user.id)}&tripId=${trip.id}&sort=created_at&order=desc&limit=5`)
-      .then((result) => setAnswers(result.data))
-      .catch(() => setAnswers([]));
-  }, [trip.id, user.id]);
-
-  const ask = async (event) => {
-    event.preventDefault();
-    if (!prompt.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const fullPrompt = `${prompt.trim()}\n\n(Trip: ${trip.title}, ${trip.destination}, ${trip.startDate} to ${trip.endDate})`;
-      const advice = await api('/api/advice', {
-        method: 'POST',
-        body: { user_id: String(user.id), trip_id: trip.id, topic, prompt: fullPrompt.slice(0, 1000) },
-      });
-      setAnswers((current) => [advice, ...current]);
-      setPrompt('');
-    } catch (err) {
-      setError(err);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="card advice-card">
-      <h2>AI Travel Assistant</h2>
-      <form className="form" onSubmit={ask}>
-        <textarea
-          rows={3}
-          value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          placeholder={`e.g. What should I pack for ${trip.destination}?`}
-          maxLength={800}
-        />
-        <div className="field-row">
-          <select value={topic} onChange={(event) => setTopic(event.target.value)} aria-label="Topic">
-            {TOPICS.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <button type="submit" className="btn btn-primary" disabled={busy || !prompt.trim()}>
-            {busy ? 'Thinking…' : 'Ask'}
-          </button>
-        </div>
-      </form>
-      <ErrorMessage error={error} />
-      <ul className="advice-list">
-        {answers.map((advice) => (
-          <li key={advice.id}>
-            <p className="advice-q">{advice.prompt.split('\n\n(Trip:')[0]}</p>
-            <p className="advice-a">{advice.content}</p>
-            {advice.source === 'stub' && <span className="badge">placeholder: no LLM key set</span>}
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 
