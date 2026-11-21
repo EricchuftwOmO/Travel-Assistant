@@ -33,7 +33,10 @@ module.exports = {
         // The local departure date when known (live results), so a late-evening flight is not counted as the next day in UTC
         { param: 'departDate', column: 'COALESCE(LEFT(depart_local, 10)::date, depart_at::date)', op: 'date', type: 'date', description: 'Departure date (YYYY-MM-DD), local to the origin airport' },
         { param: 'maxPrice', column: 'price', op: 'lte', type: 'number', description: 'Highest price' },
+        { param: 'source', column: 'source', op: 'eq', type: 'enum', values: ['catalog', 'serpapi'], description: 'catalog or serpapi. Without departDate, only catalog flights are listed unless this asks for serpapi.' },
     ],
+    // Live results belong to the date they were searched for, so a search without a date lists only the catalog.
+    queryDefaults: (query) => (query.departDate === undefined && query.source === undefined ? { source: 'catalog' } : {}),
     sortable: ['price', 'depart_at', 'arrive_at'],
     seed: [
         { airline: 'Alaska Airlines', flight_number: 'AS 21', origin: 'SEA', destination: 'HND', depart_at: '2026-12-01T10:15:00Z', arrive_at: '2026-12-02T14:05:00Z', price: 845.5, seats_available: 12 },

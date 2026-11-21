@@ -20,6 +20,8 @@ module.exports = {
         content: { type: 'text', description: 'The answer. Leave out on create to have the LLM write it.', example: 'Pack layers: it is cold but dry. Bring a warm coat, comfortable shoes, and a Suica card.' },
         model: { type: 'string', readOnly: true, description: 'Model that wrote the content (set by the service)' },
         source: { type: 'enum', values: ['llm', 'stub', 'user'], readOnly: true, description: 'llm = model answer, stub = a travel joke (no API key), user = content supplied by the caller' },
+        tool_steps: { type: 'text', readOnly: true, description: 'JSON list of the tool calls the model made, e.g. [{"tool":"search_flights","summary":"Searched flights SEA → NRT on 2026-12-25 (live): 7 found","count":7}]' },
+        flights: { type: 'text', readOnly: true, description: 'JSON list of the flights the searches found (cheapest first, at most 5), for the app to show as cards' },
     },
     filters: [
         { param: 'userId', column: 'user_id', op: 'eq', description: "User's ID" },

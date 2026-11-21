@@ -129,7 +129,9 @@ function parseIntQuery(query, name, { min, max, fallback }) {
     return n;
 }
 
-function buildWhere(resource, query) {
+function buildWhere(resource, rawQuery) {
+    // A resource may add default filters, e.g. flights without a date list only the catalog.
+    const query = { ...(resource.queryDefaults ? resource.queryDefaults(rawQuery) : {}), ...rawQuery };
     const clauses = [];
     const params = [];
     for (const filter of resource.filters || []) {

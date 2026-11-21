@@ -2488,6 +2488,106 @@
           }
         },
         {
+          "name": "AI assistant: a flight question returns the answer, the tool steps and the flights found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('no errors', () => pm.expect(body.errors).to.be.undefined);",
+                  "const a = body.data.askAdvice;",
+                  "pm.test('answer text', () => pm.expect(a.content).to.be.a('string').and.not.empty);",
+                  "pm.test('steps and flights are lists', () => { pm.expect(a.steps).to.be.an('array'); pm.expect(a.flights).to.be.an('array'); });",
+                  "if (a.source === 'llm') {",
+                  "  pm.test('the model made at most 2 flight searches (the cap)', () => pm.expect(a.steps.filter((s) => s.tool === 'search_flights' && !/limit reached/.test(s.summary)).length).to.be.at.most(2));",
+                  "  pm.test('every flight shown is a real flight with an id and a price', () => a.flights.forEach((f) => { pm.expect(f.id).to.be.a('string'); pm.expect(f.price).to.be.a('number'); }));",
+                  "} else {",
+                  "  pm.test('stub mode uses no tools', () => { pm.expect(a.steps).to.have.lengthOf(0); pm.expect(a.flights).to.have.lengthOf(0); });",
+                  "}",
+                  "pm.collectionVariables.set('agentAdviceId', a.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{gqlToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Ask($prompt: String!) {\n  askAdvice(topic: general, prompt: $prompt) {\n    id content source\n    steps { tool summary count }\n    flights { id airline flightNumber origin destination price source }\n  }\n}",
+                "variables": "{\n  \"prompt\": \"What is the cheapest flight from Seattle to Tokyo Narita on 2027-01-27?\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "graphql"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cleanup: delete the AI assistant answer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{gqlToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/advice/{{agentAdviceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advice",
+                "{{agentAdviceId}}"
+              ]
+            }
+          }
+        },
+        {
           "name": "me without a token is null",
           "event": [
             {

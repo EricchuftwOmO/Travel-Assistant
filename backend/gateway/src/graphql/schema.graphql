@@ -405,7 +405,18 @@ type Advice {
   model: String
   "llm = model answer, stub = a travel joke (no LLM key), user = supplied by the caller"
   source: AdviceSource
+  "The tool calls the assistant made for this answer (empty when it used none)."
+  steps: [AdviceStep!]!
+  "Flights the assistant's searches found, cheapest first (at most 5). Adding one to a trip is up to the user."
+  flights: [Flight!]!
   createdAt: String!
+}
+
+"One tool call, e.g. a flight search."
+type AdviceStep {
+  tool: String!
+  summary: String!
+  count: Int
 }
 
 extend type Mutation {

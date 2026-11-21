@@ -3,6 +3,7 @@ import { useMatch } from 'react-router-dom';
 import { adviceApi, tripsApi } from '../api';
 import { useAuth } from '../auth';
 import ChatMarkdown from './ChatMarkdown';
+import ChatFlightCards from './ChatFlightCards';
 
 // The AI Travel Assistant as a floating chat. It uses the gateway's GraphQL API (myAdvice and
 // askAdvice), which takes the user from the login token, so a client cannot ask as someone else.
@@ -18,9 +19,19 @@ const HISTORY_PAGE = 20;
 // Saved prompts carry the trip details after the question; show only the question.
 const questionOf = (prompt) => prompt.split(TRIP_NOTE)[0];
 
+// An answer, with the searches the assistant ran and the flights they found.
+const assistantMessage = (advice) => ({
+  id: `a${advice.id}`,
+  role: 'assistant',
+  text: advice.content,
+  stub: advice.source === 'stub',
+  steps: advice.steps || [],
+  flights: advice.flights || [],
+});
+
 const toMessages = (advice) => [
   { id: `q${advice.id}`, role: 'user', text: questionOf(advice.prompt) },
-  { id: `a${advice.id}`, role: 'assistant', text: advice.content, stub: advice.source === 'stub' },
+  assistantMessage(advice),
 ];
 
 const suggestionsFor = (trip) =>
@@ -31,6 +42,18 @@ const suggestionsFor = (trip) =>
         `How should I get around ${trip.destination}?`,
       ]
     : ['Tips for a long-haul flight?', 'How do I find cheap flights?', 'What travel insurance do I need?'];
+
+// What the assistant searched before answering, e.g. "Searched flights SEA → NRT on 2026-12-25 (live): 7 found".
+function ChatSteps({ steps }) {
+  if (!steps?.length) return null;
+  return (
+    <ul className="chat-steps">
+      {steps.map((step, index) => (
+        <li key={index}>🔎 {step.summary}</li>
+      ))}
+    </ul>
+  );
+}
 
 export default function ChatWidget() {
   const { user } = useAuth();
@@ -142,7 +165,7 @@ export default function ChatWidget() {
       });
       setMessages((current) => [
         ...current,
-        { id: `a${advice.id}`, role: 'assistant', text: advice.content, stub: advice.source === 'stub' },
+        assistantMessage(advice),
       ]);
     } catch (err) {
       setMessages((current) => [
@@ -219,7 +242,9 @@ export default function ChatWidget() {
                     : message.role === 'assistant'
                       ? <ChatMarkdown text={message.text} />
                       : message.text}
+                  <ChatSteps steps={message.steps} />
                 </div>
+                <ChatFlightCards flights={message.flights} currentTrip={trip} />
               </div>
             ))}
             {history?.length > 0 && (
@@ -252,6 +277,7 @@ export default function ChatWidget() {
                     : message.role === 'assistant'
                       ? <ChatMarkdown text={message.text} />
                       : message.text}
+                  <ChatSteps steps={message.steps} />
                   {message.stub && (
                     <span className="chat-stub">No LLM key is set, so for now I can only tell travel jokes. 😄</span>
                   )}
@@ -261,6 +287,7 @@ export default function ChatWidget() {
                     </button>
                   )}
                 </div>
+                <ChatFlightCards flights={message.flights} currentTrip={trip} />
               </div>
             ))}
             {sending && (

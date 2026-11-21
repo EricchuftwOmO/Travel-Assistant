@@ -56,7 +56,8 @@ function loadConfig() {
             // The LLM Service waits on a language model, so it gets a longer timeout
             llm: {
                 url: process.env.LLM_SERVICE_URL || 'http://localhost:3008',
-                timeoutMs: intFromEnv('LLM_TIMEOUT_MS', 40000),
+                // Answers may now include up to two flight searches (each can be a live Google Flights search)
+                timeoutMs: intFromEnv('LLM_TIMEOUT_MS', 60000),
             },
             planner: {
                 url: process.env.PLANNER_SERVICE_URL || '',
