@@ -98,7 +98,16 @@ type Flight {
   arriveAt: String!
   price: Float!
   currency: String!
-  seatsAvailable: Int!
+  "Unknown (null) for live Google Flights results."
+  seatsAvailable: Int
+  "0 = nonstop."
+  stops: Int
+  "Local departure time at the origin airport, e.g. 2027-01-28 10:15 (live results only)."
+  departLocal: String
+  "Local arrival time at the destination airport (live results only)."
+  arriveLocal: String
+  "catalog = our own data, serpapi = a live Google Flights result."
+  source: String
 }
 enum FlightSort { price departAt arriveAt }
 

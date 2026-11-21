@@ -22,6 +22,12 @@ export const formatDateTime = (iso) =>
     minute: '2-digit',
   });
 
+// A local airport time from Google Flights, '2027-01-28 10:15' -> 'Jan 28, 10:15' (no time-zone shift).
+export const formatLocalTime = (local) => {
+  const [date, time] = local.split(' ');
+  return `${formatDate(date, { year: false })}, ${time}`;
+};
+
 export const formatMoney = (amount, currency = 'USD') =>
   new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
 

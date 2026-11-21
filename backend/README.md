@@ -57,6 +57,16 @@ and saves it in `places` (`google_place_id`, address, lat, lng). Without a key t
 uses the sample catalog (`GET /api/places`, `{ placeId }`). The browser map uses the same key (or
 `GOOGLE_MAPS_API_KEY`) through the Maps JavaScript API.
 
+## Live flight search (SerpApi Google Flights)
+
+`GET /api/flights` with `origin`, `destination` and a future `departDate` also asks Google Flights through SerpApi
+(`SERPAPI_API_KEY`, flight service only). Results are saved as `flights` rows (`source: "serpapi"`, `stops`,
+`depart_local`, `arrive_local`, unique `external_key`), so they get normal ids that trips, the AI and GraphQL use.
+Reliability: 8 s timeout per attempt, one retry for timeouts, network errors, 5xx and 429 (not for a bad key),
+a searched route and date reused for 30 minutes, failures remembered for 60 s, and the stored catalog as the
+fallback. The `X-Flight-Source` header says `live`, `live-cached`, `fallback` or `catalog`. The gateway gives
+flight requests 20 s (`FLIGHT_TIMEOUT_MS`) so it does not cut off a slow search or its retry.
+
 ## Trip flights
 
 `POST /api/trips/:id/flights { flightId }` (or `flightId` in `POST /api/trips`) makes the trip service read

@@ -11,12 +11,15 @@ const SQL_TYPES = {
 const writableNames = (resource) =>
     Object.entries(resource.fields).filter(([, def]) => !def.readOnly).map(([name]) => name);
 
+const defaultSql = (def) =>
+    def.default === undefined ? '' : ` DEFAULT ${typeof def.default === 'string' ? `'${def.default}'` : def.default}`;
+
 async function initTable(pool, resource) {
     const columns = Object.entries(resource.fields).map(([name, def]) => {
         let sql = `${name} ${SQL_TYPES[def.type]}`;
         if (def.required) sql += ' NOT NULL';
-        if (def.default !== undefined) sql += ` DEFAULT ${typeof def.default === 'string' ? `'${def.default}'` : def.default}`;
-        return sql;
+        if (def.unique) sql += ' UNIQUE';
+        return sql + defaultSql(def);
     });
     await pool.query(
         `CREATE TABLE IF NOT EXISTS ${resource.table} (
@@ -24,6 +27,12 @@ async function initTable(pool, resource) {
            ${columns.join(',\n           ')},
            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
          )`);
+
+    // A table created by an older version gets the fields added since (never NOT NULL, so existing rows fit).
+    for (const [name, def] of Object.entries(resource.fields)) {
+        await pool.query(
+            `ALTER TABLE ${resource.table} ADD COLUMN IF NOT EXISTS ${name} ${SQL_TYPES[def.type]}${def.unique ? ' UNIQUE' : ''}${defaultSql(def)}`);
+    }
 
     const { rows } = await pool.query(`SELECT COUNT(*) AS n FROM ${resource.table}`);
     if (rows[0].n > 0 || !resource.seed?.length) return;

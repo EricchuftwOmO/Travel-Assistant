@@ -45,8 +45,18 @@ paths:
         - Flights
       summary: List flights
       operationId: listFlights
-      description: "All filters are optional and can be combined. Responses are cached in Redis (see the X-Cache
-        header: HIT or MISS)."
+      description: |
+        All filters are optional and can be combined. Responses are cached in Redis (see the X-Cache header: HIT or MISS).
+
+        **Live search (Google Flights via SerpApi).** When SERPAPI_API_KEY is set and the search has origin,
+        destination and a future departDate, the service first asks Google Flights (one way, USD), saves the
+        results as flights rows (source "serpapi", with local times and stops) and then answers from the table,
+        so live and stored flights share ids, filters and sorting. Each attempt times out after 8 s; timeouts,
+        network errors, 5xx and 429 are retried once. A searched route and date are reused for 30 minutes.
+        If the live search fails, the stored catalog answers. Response headers:
+        - X-Flight-Source: live, live-cached, fallback (see X-Flight-Notice) or catalog (no live search)
+        - X-Flight-Notice: why live results are missing
+        - X-Flight-Attempts: how many SerpApi attempts were made
       parameters:
         - name: origin
           in: query

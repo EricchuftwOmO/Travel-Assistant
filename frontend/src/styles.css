@@ -131,6 +131,17 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .route-line { flex: 1; border-top: 2px dashed var(--border); position: relative; height: 0; }
 .route-line span { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: var(--surface); padding: 0 6px; font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
 .flight-price { display: flex; flex-direction: column; align-items: flex-end; }
+.airport-input { position: relative; }
+.airport-options { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; min-width: 260px; max-height: 320px; overflow-y: auto; list-style: none; margin: 0; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15); }
+.airport-options li { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+.airport-options li.active { background: var(--accent-soft); }
+.airport-code { font-weight: 700; font-family: ui-monospace, Consolas, monospace; color: var(--accent-strong); min-width: 34px; }
+.airport-text { display: flex; flex-direction: column; min-width: 0; }
+.airport-text .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge-live { margin-left: 6px; background: var(--accent-soft); color: var(--accent-strong); vertical-align: middle; }
+.source-note { margin: -4px 0 12px; font-size: 0.85rem; }
+.source-live { color: var(--accent-strong); }
+.source-fallback { background: #fff7e6; color: #8a5300; border-radius: 8px; padding: 8px 12px; }
 .flight-price strong { font-size: 1.25rem; }
 
 /* My trips */

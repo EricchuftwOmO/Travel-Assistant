@@ -1,12 +1,47 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { flightsApi, tripsApi } from '../api';
-import { addDays, duration, formatDate, formatDateTime, formatMoney, formatRange } from '../format';
+import { addDays, duration, formatDate, formatDateTime, formatLocalTime, formatMoney, formatRange } from '../format';
+import AirportInput from '../components/AirportInput';
 import ErrorMessage from '../components/ErrorMessage';
 import Modal from '../components/Modal';
 import TripForm from '../components/TripForm';
 
 const EMPTY_SEARCH = { origin: 'SEA', destination: '', departDate: '', maxPrice: '' };
+
+const AIRPORT = /^[A-Z]{3}$/;
+const todayLocal = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// The flight service searches Google Flights live only with an origin, a destination and a future date.
+const wantsLive = ({ origin, destination, departDate }) =>
+  AIRPORT.test(origin?.trim() || '') && AIRPORT.test(destination?.trim() || '') && Boolean(departDate) && departDate >= todayLocal();
+
+const stopsLabel = (stops) => (stops == null ? null : stops === 0 ? 'Nonstop' : `${stops} stop${stops > 1 ? 's' : ''}`);
+
+// What the list is made of, in one line above it.
+function SourceNote({ criteria, flights }) {
+  if (!criteria || !flights) return null;
+  const live = flights.some((flight) => flight.source === 'serpapi');
+  if (wantsLive(criteria)) {
+    return live ? (
+      <p className="source-note source-live">● Live results from Google Flights, cheapest first. Times are local to each airport.</p>
+    ) : (
+      <p className="source-note source-fallback">
+        Live Google Flights search isn't available right now, or found nothing for this route. Showing flights from our
+        catalog instead.
+      </p>
+    );
+  }
+  return (
+    <p className="source-note muted small">
+      Showing flights from our catalog. Enter <strong>from</strong>, <strong>to</strong> and a <strong>date</strong> to
+      search Google Flights live.
+    </p>
+  );
+}
 
 // Screen 01: search flights, then add one to a new or existing trip.
 export default function FlightSearchPage() {
@@ -15,12 +50,14 @@ export default function FlightSearchPage() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [searched, setSearched] = useState(null); // the criteria the list shows
 
   const runSearch = async (criteria) => {
     setLoading(true);
     setError(null);
     try {
       setFlights(await flightsApi.search(criteria));
+      setSearched(criteria);
     } catch (err) {
       setError(err);
       setFlights(null);
@@ -56,14 +93,24 @@ export default function FlightSearchPage() {
           runSearch(search);
         }}
       >
-        <label className="field">
+        <div className="field">
           <span>Departing from</span>
-          <input value={search.origin} onChange={set('origin')} placeholder="SEA" maxLength={3} />
-        </label>
-        <label className="field">
+          <AirportInput
+            label="Departing from"
+            value={search.origin}
+            onChange={(code) => setSearch((current) => ({ ...current, origin: code }))}
+            placeholder="City or airport, e.g. Seattle"
+          />
+        </div>
+        <div className="field">
           <span>Going to</span>
-          <input value={search.destination} onChange={set('destination')} placeholder="Any" maxLength={3} />
-        </label>
+          <AirportInput
+            label="Going to"
+            value={search.destination}
+            onChange={(code) => setSearch((current) => ({ ...current, destination: code }))}
+            placeholder="Any, e.g. Tokyo or TPE"
+          />
+        </div>
         <label className="field">
           <span>Departure date</span>
           <input type="date" value={search.departDate} onChange={set('departDate')} />
@@ -74,7 +121,7 @@ export default function FlightSearchPage() {
         </label>
         <div className="search-actions">
           <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Searching…' : 'Search flights'}
+            {loading ? (wantsLive(search) ? 'Searching Google Flights…' : 'Searching…') : 'Search flights'}
           </button>
           <button
             type="button"
@@ -96,6 +143,7 @@ export default function FlightSearchPage() {
           <h2 className="section-title">
             Available flights <span className="count">{flights.length}</span>
           </h2>
+          <SourceNote criteria={searched} flights={flights} />
           {flights.length === 0 ? (
             <div className="empty">No flights match. Try another date or a higher budget.</div>
           ) : (
@@ -111,13 +159,17 @@ export default function FlightSearchPage() {
                   </div>
                   <div className="flight-meta">
                     <strong>{flight.airline}</strong> · {flight.flightNumber}
+                    {flight.source === 'serpapi' && <span className="badge badge-live">Google Flights</span>}
                     <div className="muted small">
-                      {formatDateTime(flight.departAt)} → {formatDateTime(flight.arriveAt)}
+                      {flight.departLocal && flight.arriveLocal
+                        ? `${formatLocalTime(flight.departLocal)} → ${formatLocalTime(flight.arriveLocal)} (local)`
+                        : `${formatDateTime(flight.departAt)} → ${formatDateTime(flight.arriveAt)}`}
                     </div>
+                    {stopsLabel(flight.stops) && <div className="muted small">{stopsLabel(flight.stops)}</div>}
                   </div>
                   <div className="flight-price">
                     <strong>{formatMoney(flight.price, flight.currency)}</strong>
-                    <span className="muted small">{flight.seatsAvailable} seats left</span>
+                    {flight.seatsAvailable != null && <span className="muted small">{flight.seatsAvailable} seats left</span>}
                   </div>
                   <button type="button" className="btn btn-primary" onClick={() => setSelected(flight)}>
                     Add to Trip
@@ -154,13 +206,16 @@ function AddToTripDialog({ flight, onClose }) {
       .catch(setError);
   }, []);
 
-  // The trip starts on the departure day, in the traveler's own time zone.
+  // The trip starts on the departure day: the local date at the airport for live results,
+  // otherwise the date in the traveler's own time zone.
   const departed = new Date(flight.departAt);
-  const startDate = [
-    departed.getFullYear(),
-    String(departed.getMonth() + 1).padStart(2, '0'),
-    String(departed.getDate()).padStart(2, '0'),
-  ].join('-');
+  const startDate = flight.departLocal
+    ? flight.departLocal.slice(0, 10)
+    : [
+        departed.getFullYear(),
+        String(departed.getMonth() + 1).padStart(2, '0'),
+        String(departed.getDate()).padStart(2, '0'),
+      ].join('-');
   const city = DESTINATION_NAMES[flight.destination] || flight.destination;
 
   const createTrip = async (form) => {
