@@ -112,6 +112,8 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       REDIS_URL: redis://redis:6379
+      # Live Google Flights results (searches with origin, destination and a future date). Empty = catalog only.
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

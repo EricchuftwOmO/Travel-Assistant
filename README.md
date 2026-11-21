@@ -33,6 +33,9 @@ Ports and environment variables: [`deploy/DEPLOY.md`](deploy/DEPLOY.md).
 **Optional:** `cp .env.example .env` and set `GROQ_API_KEY` for real model answers. Without it the LLM service
 answers questions with travel jokes (`"source": "stub"`) and picks with simple rules. `.env` is git-ignored.
 
+**Optional:** set `SERPAPI_API_KEY` (from serpapi.com) for live Google Flights results when a search has from, to and a
+future date. Then: `docker compose up -d flight-service`. Without it, Flight Search uses the stored catalog.
+
 **Optional:** set `GOOGLE_PLACES_API_KEY` (a Google Cloud key with **Places API (New)** and **Maps JavaScript API**
 enabled) to pick places on a Google map in Add place. Then rebuild: `docker compose up --build -d trip-service frontend`.
 Without it, Add place uses the sample place list.

@@ -168,6 +168,68 @@
           }
         },
         {
+          "name": "Live search: origin + destination + a future date (Google Flights via SerpApi, or the catalog)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 45 days from now, so the date is always in the future",
+                  "pm.collectionVariables.set('liveDate', new Date(Date.now() + 45 * 86400000).toISOString().slice(0, 10));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const source = pm.response.headers.get('X-Flight-Source');",
+                  "pm.test('says where the flights came from', () => pm.expect(['live', 'live-cached', 'fallback', 'catalog']).to.include(source));",
+                  "pm.test('a fallback or catalog answer explains why when live search is off or failed', () => { if (source === 'fallback') pm.expect(pm.response.headers.get('X-Flight-Notice')).to.be.a('string'); });",
+                  "const body = pm.response.json();",
+                  "pm.test('every flight matches the route and has the new fields', () => body.data.forEach((f) => { pm.expect(f.origin).to.eql('SEA'); pm.expect(f.destination).to.eql('NRT'); pm.expect(['catalog', 'serpapi']).to.include(f.source); pm.expect(f.stops).to.be.a('number'); }));",
+                  "pm.test('live results carry local times', () => body.data.filter((f) => f.source === 'serpapi').forEach((f) => pm.expect(f.depart_local).to.match(/^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}$/)));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/flights?origin=SEA&destination=NRT&departDate={{liveDate}}&sort=price",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "flights"
+              ],
+              "query": [
+                {
+                  "key": "origin",
+                  "value": "SEA"
+                },
+                {
+                  "key": "destination",
+                  "value": "NRT"
+                },
+                {
+                  "key": "departDate",
+                  "value": "{{liveDate}}"
+                },
+                {
+                  "key": "sort",
+                  "value": "price"
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Create a flight",
           "event": [
             {

@@ -183,6 +183,8 @@ const resolvers = {
         departAt: pick('depart_at'),
         arriveAt: pick('arrive_at'),
         seatsAvailable: pick('seats_available'),
+        departLocal: pick('depart_local'),
+        arriveLocal: pick('arrive_local'),
     },
 
     Hotel: {

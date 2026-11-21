@@ -39,9 +39,11 @@ function loadConfig() {
                 url: process.env.BUDGET_SERVICE_URL || 'http://localhost:3003',
                 timeoutMs: defaultTimeoutMs,
             },
+            // A live Google Flights search (SerpApi) takes a few seconds and may be retried once
+            // (2 x 8 s at most in the flight service), so flights get longer than the default.
             flight: {
                 url: process.env.FLIGHT_SERVICE_URL || 'http://localhost:3004',
-                timeoutMs: defaultTimeoutMs,
+                timeoutMs: intFromEnv('FLIGHT_TIMEOUT_MS', 20000),
             },
             hotel: {
                 url: process.env.HOTEL_SERVICE_URL || 'http://localhost:3005',

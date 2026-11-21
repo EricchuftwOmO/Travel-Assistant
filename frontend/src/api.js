@@ -265,7 +265,8 @@ export const placesApi = {
 
 // ---------- Flights (public catalog) ----------
 
-const FLIGHT_FIELDS = 'id airline flightNumber origin destination departAt arriveAt price currency seatsAvailable';
+const FLIGHT_FIELDS =
+  'id airline flightNumber origin destination departAt arriveAt price currency seatsAvailable stops departLocal arriveLocal source';
 
 export const flightsApi = {
   // criteria: { origin, destination, departDate (YYYY-MM-DD), maxPrice }, cheapest first
