@@ -2,7 +2,7 @@
   "name": "travel-assistant-frontend",
   "private": true,
   "version": "1.0.0",
-  "description": "Travel Assistant web app (React + Vite). Talks only to the API gateway.",
+  "description": "Travel Assistant web app (React + Vite). Talks only to the API gateway's GraphQL API.",
   "type": "module",
   "scripts": {
     "dev": "vite",

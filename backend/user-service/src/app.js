@@ -6,8 +6,7 @@ const express = require('express');
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yaml');
 const db = require('./data/db');
-const accounts = require('./accounts');
-const { graphqlHandler, typeDefs } = require('./graphql');
+const routes = require('./routes');
 const { notFound, errorHandler } = require('./middleware/errorHandlers');
 
 const specPath = path.join(__dirname, '..', 'openapi.yaml');
@@ -31,19 +30,7 @@ app.get('/health', async (req, res) => {
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(apiSpec));
 app.get('/openapi.yaml', (req, res) => res.type('application/yaml').sendFile(specPath));
 
-// GraphQL: the main user API. The gateway forwards /api/graphql here.
-app.post(['/graphql', '/api/graphql'], graphqlHandler);
-app.get(['/graphql/schema', '/api/graphql/schema'], (req, res) => res.type('text/plain').send(typeDefs));
-
-// REST login and registration, kept for simple clients and the Postman tests.
-app.post('/api/auth/register', async (req, res) => {
-  const result = await accounts.register(req.body);
-  res.status(201).json(result);
-});
-
-app.post('/api/auth/login', async (req, res) => {
-  res.status(200).json(await accounts.login(req.body));
-});
+app.use('/api', routes);
 
 app.use(notFound);
 app.use(errorHandler);

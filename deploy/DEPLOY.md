@@ -24,7 +24,7 @@ docker compose down -v          # stop and delete data (back to sample data)
 | Service | Port | Reachable from |
 |---|---|---|
 | gateway | 8080 | everywhere (the only port clients use) |
-| trip / flight / hotel / car-rental / activity / llm | 3001 / 3004 / 3005 / 3006 / 3007 / 3008 | this computer only (`127.0.0.1`), for Swagger UI at `/docs` |
+| user / trip / flight / hotel / car-rental / activity / llm | 3009 / 3001 / 3004 / 3005 / 3006 / 3007 / 3008 | inside the Docker network only (private). `docker-compose.dev.yml` opens them on `127.0.0.1` for Swagger UI in development |
 | postgres, redis | 5432, 6379 | inside the Docker network |
 
 ## Configuration
@@ -37,7 +37,8 @@ No secret is stored in an image, `docker-compose.yml` or git. Real values go in 
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` | flight, hotel, car-rental, activity, llm | `postgres`, 5432, `postgres`, `postgres` | PostgreSQL connection |
 | `DB_NAME` | same five | `flight_db`, `hotel_db`, `car_rental_db`, `activity_db`, `llm_db` | each service's database (created on first start) |
 | `DATABASE_URL` | trip-service | `postgres://postgres:postgres@postgres:5432/trip_db` | trip service connection |
-| `JWT_SECRET` | trip-service, gateway | development default | signs and checks login tokens; both must match. **Set a long random value** |
+| `JWT_SECRET` | user-service | development default | signs and checks login tokens; no other service has it. **Set a long random value** |
+| `GOOGLE_CLIENT_ID` | user-service (and the frontend build as `VITE_GOOGLE_CLIENT_ID`) | empty | OAuth web client ID for Sign in with Google; empty = off |
 | `REDIS_URL` | flight, hotel, car-rental, activity | `redis://redis:6379` | GET cache; empty = no cache |
 | `CACHE_TTL_SECONDS` | same | 60 | cache lifetime |
 | `GROQ_API_KEY` | llm-service | empty | model key; empty = placeholder answers |
@@ -55,7 +56,7 @@ gives services a private network.
 3. For each of the six services, create a Private Service (Docker, Dockerfile `backend/<service>/Dockerfile`)
    and set its variables from the table above (`JWT_SECRET` and `GROQ_API_KEY` as secrets).
 4. Create the gateway as a Web Service (the only public one), with each `*_SERVICE_URL` pointing at the matching
-   private service, and the same `JWT_SECRET`.
+   private service. The trip service must stay private: it trusts the `X-User-Id` header the gateway sends.
 5. Health check path: `/health` (every service has it).
 6. Test with `curl https://<gateway-name>.onrender.com/api/flights` and the Postman collection (change `baseUrl`).
 

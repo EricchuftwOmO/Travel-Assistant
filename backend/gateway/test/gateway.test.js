@@ -3,17 +3,9 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
-const { createHmac } = require('node:crypto');
 const { createApp } = require('../src/app');
 
-const SECRET = 'test-secret';
-
-function makeToken(payload, secret = SECRET) {
-    const enc = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
-    const head = `${enc({ alg: 'HS256', typ: 'JWT' })}.${enc(payload)}`;
-    return `${head}.${createHmac('sha256', secret).update(head).digest('base64url')}`;
-}
-const goodToken = makeToken({ userId: 7, exp: Math.floor(Date.now() / 1000) + 3600 });
+const goodToken = 'good-token'; // the stub user service accepts this one (as user 7)
 
 const rawFetch = fetch;
 const fetchAs = (url, opts = {}) =>
@@ -46,6 +38,25 @@ function echoService(name) {
     });
 }
 
+// The user service: answers the gateway's token check, and echoes everything else like the others
+function userService() {
+    return listen((req, res) => {
+        if (req.url === '/api/auth/validate') {
+            validations.push(req.headers.authorization);
+            const ok = req.headers.authorization === `Bearer ${goodToken}`;
+            res.writeHead(ok ? 200 : 401, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify(ok ? { userId: 7 } : { error: { code: 'UNAUTHORIZED', message: 'bad token' } }));
+        }
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ service: 'user', method: req.method, url: req.url, headers: req.headers, body }));
+        });
+    });
+}
+const validations = []; // the Authorization header of every token check the user service received
+
 async function deadUrl() {
     const url = await listen(() => {});
     const server = servers.pop();
@@ -54,6 +65,7 @@ async function deadUrl() {
 }
 
 let gateway;
+let userUrl;
 
 before(async () => {
     const config = {
@@ -61,9 +73,8 @@ before(async () => {
         healthPath: '/health',
         healthTimeoutMs: 500,
         logRequests: false,
-        jwtSecret: SECRET,
         services: {
-            user: { url: await echoService('user'), timeoutMs: 1000 },
+            user: { url: userUrl = await userService(), timeoutMs: 1000 },
             trip: { url: await echoService('trip'), timeoutMs: 1000 },
             search: { url: await echoService('search'), timeoutMs: 1000 },
             budget: { url: await echoService('budget'), timeoutMs: 1000 },
@@ -92,7 +103,6 @@ test('routes each path to the owning service', async () => {
         ['/api/trips/1/itineraries/2/items', 'trip'],
         ['/api/auth/login', 'user'],
         ['/api/users/me', 'user'],
-        ['/api/graphql', 'user'],
         ['/api/trips/1/flights', 'trip'],
         ['/api/places?city=Tokyo', 'trip'],
         ['/api/activities/search?city=seattle', 'search'],
@@ -166,8 +176,8 @@ test('service that does not answer returns 504 UPSTREAM_TIMEOUT', async () => {
 
 test('service that is down returns 502 UPSTREAM_UNAVAILABLE', async () => {
     const config = {
-        corsOrigins: [], jwtSecret: SECRET, healthPath: '/health', healthTimeoutMs: 500, logRequests: false,
-        services: { trip: { url: await deadUrl(), timeoutMs: 1000 } },
+        corsOrigins: [], healthPath: '/health', healthTimeoutMs: 500, logRequests: false,
+        services: { user: { url: userUrl, timeoutMs: 1000 }, trip: { url: await deadUrl(), timeoutMs: 1000 } },
     };
     const downGateway = await listen(createApp(config));
 
@@ -180,8 +190,8 @@ test('service that is down returns 502 UPSTREAM_UNAVAILABLE', async () => {
 
 test('unconfigured planner is not routed', async () => {
     const config = {
-        corsOrigins: [], jwtSecret: SECRET, healthPath: '/health', healthTimeoutMs: 500, logRequests: false,
-        services: { planner: { url: '', timeoutMs: 1000 } },
+        corsOrigins: [], healthPath: '/health', healthTimeoutMs: 500, logRequests: false,
+        services: { user: { url: userUrl, timeoutMs: 1000 }, planner: { url: '', timeoutMs: 1000 } },
     };
     const noPlanner = await listen(createApp(config));
     const res = await fetchAs(`${noPlanner}/api/planner/proposals`, { method: 'POST' });
@@ -220,29 +230,26 @@ test('gateway liveness check', async () => {
     assert.equal(res.status, 200);
 });
 
-test('login check: protected routes need a valid token', async () => {
+test('login check: protected routes need a token the user service accepts', async () => {
     const noToken = await rawFetch(`${gateway}/api/trips`);
     assert.equal(noToken.status, 401);
     assert.equal(noToken.headers.get('www-authenticate'), 'Bearer');
     assert.equal((await noToken.json()).error.code, 'UNAUTHORIZED');
 
-    const bad = [
-        makeToken({ userId: 7, exp: Math.floor(Date.now() / 1000) + 3600 }, 'wrong-secret'),
-        makeToken({ userId: 7, exp: Math.floor(Date.now() / 1000) - 10 }),
-        makeToken({ userId: 7 }),
-        'not.a.jwt',
-    ];
-    for (const token of bad) {
-        const res = await rawFetch(`${gateway}/api/advice`, { headers: { Authorization: `Bearer ${token}` } });
-        assert.equal(res.status, 401, token);
+    for (const header of ['Bearer wrong-token', 'Basic abc', 'Bearer']) {
+        const res = await rawFetch(`${gateway}/api/advice`, { headers: { Authorization: header } });
+        assert.equal(res.status, 401, header);
     }
+    // The gateway asked the user service about the tokens it could ask about, with the header as sent
+    assert.ok(validations.includes('Bearer wrong-token'));
+    assert.ok(!validations.includes('Basic abc'));
 });
 
 test('login check: public routes need no token', async () => {
     for (const [method, path, service] of [
         ['POST', '/api/auth/login', 'user'],
         ['POST', '/api/auth/register', 'user'],
-        ['POST', '/api/graphql', 'user'],
+        ['POST', '/api/auth/google', 'user'],
         ['GET', '/api/flights?origin=SEA', 'flight'],
         ['GET', '/api/hotels', 'hotel'],
     ]) {
@@ -253,9 +260,40 @@ test('login check: public routes need no token', async () => {
     assert.equal((await rawFetch(`${gateway}/api/flights`, { method: 'POST' })).status, 401);
 });
 
+test('login check: the user service checks its own routes (no token check at the gateway first)', async () => {
+    validations.length = 0;
+    const res = await rawFetch(`${gateway}/api/users/me`);
+    assert.equal(res.status, 200); // the stub user service answers; the real one would say 401
+    assert.equal((await res.json()).service, 'user');
+    assert.equal(validations.length, 0);
+});
+
 test('login check: the gateway sets X-User-Id and drops a forged one', async () => {
     const res = await fetchAs(`${gateway}/api/trips`, { headers: { 'X-User-Id': '999' } });
     assert.equal((await res.json()).headers['x-user-id'], '7');
     const pub = await rawFetch(`${gateway}/api/flights`, { headers: { 'X-User-Id': '999' } });
     assert.equal((await pub.json()).headers['x-user-id'], undefined);
+});
+
+test('login check: user service down gives 502, not 401', async () => {
+    const config = {
+        corsOrigins: [], healthPath: '/health', healthTimeoutMs: 500, logRequests: false,
+        services: { user: { url: await deadUrl(), timeoutMs: 1000 }, trip: { url: userUrl, timeoutMs: 1000 } },
+    };
+    const noUser = await listen(createApp(config));
+    const res = await fetchAs(`${noUser}/api/trips`);
+    assert.equal(res.status, 502);
+    assert.equal((await res.json()).error.code, 'UPSTREAM_UNAVAILABLE');
+});
+
+test('GraphQL is served by the gateway at /graphql and /api/graphql', async () => {
+    for (const path of ['/graphql', '/api/graphql']) {
+        const res = await rawFetch(gateway + path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: '{ __typename }' }),
+        });
+        assert.equal(res.status, 200, path);
+        assert.equal((await res.json()).data.__typename, 'Query');
+    }
 });

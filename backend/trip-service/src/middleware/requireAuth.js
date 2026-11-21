@@ -1,31 +1,17 @@
 const ApiError = require('../helpers/ApiError');
-const { verifyToken } = require('../helpers/authHelper');
 
-const unauthorized = (res, message) => {
-  res.set('WWW-Authenticate', 'Bearer');
-  return new ApiError(401, message);
-};
-
-// Checks the bearer token again (the gateway already did) so the service is safe
-// on its own. Accounts live in the user service; here a user is just the token's id.
-// When an account is deleted, the user service first deletes its trips here.
+// Logins are not checked here. The API gateway asks the user service whether the bearer token is valid,
+// then sends the user's id as X-User-Id (and removes any X-User-Id a client sent). The user service
+// calls /internal/my-data directly with the same header. So this service must only be reachable
+// through the gateway and the user service; the published port in docker-compose is for development.
 const requireAuth = (req, res, next) => {
-  const [scheme, token] = (req.get('Authorization') || '').split(' ');
-  if (scheme !== 'Bearer' || !token) {
-    throw unauthorized(res, 'A bearer token is required');
+  const userId = Number(req.get('X-User-Id'));
+  if (!/^\d+$/.test(req.get('X-User-Id') || '') || !Number.isSafeInteger(userId) || userId < 1) {
+    res.set('WWW-Authenticate', 'Bearer');
+    throw new ApiError(401, 'A signed-in user is required (X-User-Id comes from the API gateway)');
   }
 
-  let payload;
-  try {
-    payload = verifyToken(token);
-  } catch {
-    throw unauthorized(res, 'Token is invalid or expired');
-  }
-  if (!Number.isInteger(payload.userId) || payload.userId < 1) {
-    throw unauthorized(res, 'Token is invalid or expired');
-  }
-
-  req.user = { id: payload.userId };
+  req.user = { id: userId };
   next();
 };
 

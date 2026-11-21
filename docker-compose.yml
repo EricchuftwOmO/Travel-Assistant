@@ -1,8 +1,9 @@
 # Starts every service: docker compose up --build / docker compose down
 # The web app is at http://localhost:5173. It talks only to the gateway (http://localhost:8080);
-# services reach each other by service name.
+# services reach each other by service name. Only the gateway and the web app publish ports; every other
+# service is private to the Docker network. To open the services' Swagger UIs, add docker-compose.dev.yml (see that file).
 # One PostgreSQL server (a database per service) and one Redis GET cache shared by four services.
-# Set GROQ_API_KEY for real LLM answers and JWT_SECRET to sign login tokens, in .env.
+# Set GROQ_API_KEY for real LLM answers and JWT_SECRET to sign login tokens (user service only) and GOOGLE_CLIENT_ID for Google sign-in, in .env.
 
 services:
   gateway:
@@ -20,7 +21,6 @@ services:
       CAR_RENTAL_SERVICE_URL: http://car-rental-service:3006
       LLM_SERVICE_URL: http://llm-service:3008
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
-      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
     restart: unless-stopped
 
   # The React app: http://localhost:5173 (it calls the gateway on port 8080)
@@ -33,6 +33,8 @@ services:
         # Built into the app: run docker compose up --build frontend after changing it.
         VITE_GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-${GOOGLE_PLACES_API_KEY:-}}
         VITE_GOOGLE_MAP_ID: ${GOOGLE_MAP_ID:-}
+        # The Sign in with Google button (the same client ID the user service checks). Empty = no button.
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     ports:
       - "5173:80"
     depends_on:
@@ -64,13 +66,13 @@ services:
 
   user-service:
     build: ./backend/user-service
-    ports:
-      - "127.0.0.1:3009:3009"   # dev only: Swagger UI at http://localhost:3009/docs
     environment:
       PORT: 3009
       DATABASE_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/user_db
       # Signs login tokens. Set a long random JWT_SECRET in .env; the default is for local development only.
       JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+      # OAuth web client ID for Sign in with Google (public, not a secret). Empty = Google sign-in off.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       # Deleting an account first deletes the user's trips there
       TRIP_SERVICE_URL: http://trip-service:3001
     depends_on:
@@ -85,13 +87,9 @@ services:
 
   trip-service:
     build: ./backend/trip-service
-    ports:
-      - "127.0.0.1:3001:3001"   # dev only: Swagger UI at http://localhost:3001/docs
     environment:
       PORT: 3001
       DATABASE_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/trip_db
-      # Checks the login tokens the user service signs (same secret)
-      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
       # Attaching a flight to a trip copies its details from the flight service
       FLIGHT_SERVICE_URL: http://flight-service:3004
       # Google Places API (New): nearby places for the Add place map. Empty = sample places only.
@@ -108,8 +106,6 @@ services:
 
   flight-service:
     build: ./backend/flight-service
-    ports:
-      - "127.0.0.1:3004:3004"   # dev only: Swagger UI at http://localhost:3004/docs
     environment:
       PORT: 3004
       DB_HOST: postgres
@@ -130,8 +126,6 @@ services:
 
   hotel-service:
     build: ./backend/hotel-service
-    ports:
-      - "127.0.0.1:3005:3005"   # dev only: Swagger UI at http://localhost:3005/docs
     environment:
       PORT: 3005
       DB_HOST: postgres
@@ -152,8 +146,6 @@ services:
 
   car-rental-service:
     build: ./backend/car-rental-service
-    ports:
-      - "127.0.0.1:3006:3006"   # dev only: Swagger UI at http://localhost:3006/docs
     environment:
       PORT: 3006
       DB_HOST: postgres
@@ -174,8 +166,6 @@ services:
 
   activity-service:
     build: ./backend/activity-service
-    ports:
-      - "127.0.0.1:3007:3007"   # dev only: Swagger UI at http://localhost:3007/docs
     environment:
       PORT: 3007
       DB_HOST: postgres
@@ -196,8 +186,6 @@ services:
 
   llm-service:
     build: ./backend/llm-service
-    ports:
-      - "127.0.0.1:3008:3008"   # dev only: Swagger UI at http://localhost:3008/docs
     environment:
       PORT: 3008
       DB_HOST: postgres

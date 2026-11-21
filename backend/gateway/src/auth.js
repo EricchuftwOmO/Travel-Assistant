@@ -1,57 +1,69 @@
-// Verifies the JWT (HS256, signed with the shared JWT_SECRET) before a request reaches any service.
+// The gateway does not read tokens. It asks the user service (the only service that knows the JWT secret)
+// whether the bearer token is valid, and passes the answer on to the other services as X-User-Id.
 
-const { createHmac, timingSafeEqual } = require('node:crypto');
-const { sendError } = require('./errors');
+const { GatewayError, sendError } = require('./errors');
 
+// Reachable without a token. The user service enforces login on its own /api/users/* routes.
 const PUBLIC_RULES = [
-    { methods: ['POST'], pattern: /^\/api\/auth\/(register|login)\/?$/ },
-    // GraphQL has public operations (login, register): the user service checks the token per field.
-    { methods: ['POST'], pattern: /^\/api\/graphql\/?$/ },
-    { methods: ['GET', 'HEAD'], pattern: /^\/api\/graphql\/schema\/?$/ },
+    { methods: ['POST'], pattern: /^\/api\/auth\/(register|login|google)\/?$/ },
     { methods: ['GET', 'HEAD'], pattern: /^\/api\/(flights|hotels|car-rentals|activities)(\/|$)/ },
 ];
+
+// Paths the user service answers itself, so the gateway does not check them first.
+const USER_SERVICE_PATHS = /^\/api\/(auth|users)(\/|$)/;
 
 function isPublic(method, path) {
     return PUBLIC_RULES.some((r) => r.methods.includes(method) && r.pattern.test(path));
 }
 
-const b64 = (s) => Buffer.from(s, 'base64url');
+// Returns the user id for a valid token, or null for a missing, bad or expired one.
+// Throws a GatewayError when the user service cannot be asked (502 / 504).
+async function validateToken(config, authorization, requestId) {
+    if (!/^Bearer\s+\S+$/.test(authorization || '')) return null;
+    const user = config.services.user;
+    if (!user || !user.url) throw new GatewayError(502, 'UPSTREAM_UNAVAILABLE', 'user service is not configured');
 
-function verifyJwt(token, secret, now = Date.now()) {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
+    let res;
     try {
-        const header = JSON.parse(b64(parts[0]).toString());
-        if (header.alg !== 'HS256') return null;
-        const expected = createHmac('sha256', secret).update(`${parts[0]}.${parts[1]}`).digest();
-        const actual = b64(parts[2]);
-        if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
-        const payload = JSON.parse(b64(parts[1]).toString());
-        if (typeof payload.exp !== 'number' || payload.exp * 1000 <= now) return null;
-        return payload;
-    } catch {
-        return null;
+        res = await fetch(new URL('/api/auth/validate', user.url), {
+            headers: { Authorization: authorization, 'X-Request-Id': requestId, Accept: 'application/json' },
+            signal: AbortSignal.timeout(user.timeoutMs),
+        });
+    } catch (err) {
+        if (err.name === 'TimeoutError') {
+            throw new GatewayError(504, 'UPSTREAM_TIMEOUT', `user service did not respond within ${user.timeoutMs} ms`);
+        }
+        console.error(`[${requestId}] user service error: ${err.cause?.code || err.message}`);
+        throw new GatewayError(502, 'UPSTREAM_UNAVAILABLE', 'user service is unavailable');
     }
+
+    if (res.status === 401) return null;
+    if (!res.ok) throw new GatewayError(502, 'UPSTREAM_UNAVAILABLE', `user service returned ${res.status}`);
+    const { userId } = await res.json().catch(() => ({}));
+    return Number.isInteger(userId) ? userId : null;
 }
 
-function requireLogin(secret) {
-    return function authMiddleware(req, res, next) {
+function requireLogin(config) {
+    return async function authMiddleware(req, res, next) {
         // Never trust an identity header sent by a client
-        req.headers['x-user-id'] = undefined;
         delete req.headers['x-user-id'];
 
-        if (req.method === 'OPTIONS' || !req.path.startsWith('/api/') || isPublic(req.method, req.path)) {
+        if (req.method === 'OPTIONS' || !req.path.startsWith('/api/')
+            || USER_SERVICE_PATHS.test(req.path) || isPublic(req.method, req.path)) {
             return next();
         }
-        const [scheme, token] = (req.get('Authorization') || '').split(' ');
-        const payload = scheme === 'Bearer' && token ? verifyJwt(token, secret) : null;
-        if (!payload) {
-            res.set('WWW-Authenticate', 'Bearer');
-            return sendError(res, 401, 'UNAUTHORIZED', 'A valid bearer token is required');
+        try {
+            const userId = await validateToken(config, req.get('Authorization'), req.id);
+            if (userId === null) {
+                res.set('WWW-Authenticate', 'Bearer');
+                return sendError(res, 401, 'UNAUTHORIZED', 'A valid bearer token is required');
+            }
+            req.headers['x-user-id'] = String(userId);
+            next();
+        } catch (err) {
+            next(err);
         }
-        req.headers['x-user-id'] = String(payload.userId);
-        next();
     };
 }
 
-module.exports = { requireLogin, verifyJwt, isPublic };
+module.exports = { requireLogin, validateToken, isPublic };

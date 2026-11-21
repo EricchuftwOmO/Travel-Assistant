@@ -3,6 +3,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { userApi } from '../api';
 import { useAuth } from '../auth';
 import ErrorMessage from '../components/ErrorMessage';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 
 export default function LoginPage() {
   const { user, signIn } = useAuth();
@@ -27,6 +28,19 @@ export default function LoginPage() {
           ? await userApi.login(form.email, form.password)
           : await userApi.register({ name: form.name, email: form.email, password: form.password });
       signIn(result);
+      navigate(location.state?.from || '/trips', { replace: true });
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const googleSignIn = async (credential) => {
+    setBusy(true);
+    setError(null);
+    try {
+      signIn(await userApi.loginWithGoogle(credential));
       navigate(location.state?.from || '/trips', { replace: true });
     } catch (err) {
       setError(err);
@@ -79,6 +93,7 @@ export default function LoginPage() {
             {busy ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Create account'}
           </button>
         </form>
+        <GoogleSignInButton onCredential={googleSignIn} onError={setError} />
         <p className="muted small">
           {mode === 'login' ? 'New here? ' : 'Already have an account? '}
           <button type="button" className="link-btn" onClick={switchMode}>

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AdvancedMarker, APIProvider, Map } from '@vis.gl/react-google-maps';
-import { api } from '../api';
+import { placesApi } from '../api';
 import ErrorMessage from './ErrorMessage';
 
 // The browser key only loads the map. Searching for places goes through our trip service,
-// which holds the Places key (GET /api/places/nearby).
+// which holds the Places key (GraphQL nearbyPlaces).
 export const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 // Advanced markers need a map ID. DEMO_MAP_ID is Google's ready-made one for development;
@@ -74,7 +74,8 @@ export default function PlaceMapPicker({ trip, plannedItems, itemCount, initialP
       });
       return;
     }
-    api(`/api/places/locate?q=${encodeURIComponent(trip.destination)}`)
+    placesApi
+      .locate(trip.destination)
       .then((place) => {
         const center = { lat: place.lat, lng: place.lng };
         const box = place.viewport;
@@ -106,10 +107,8 @@ export default function PlaceMapPicker({ trip, plannedItems, itemCount, initialP
     const request = ++requestRef.current;
     setSearching(true);
     setError(null);
-    const params = new URLSearchParams({ lat: here.lat.toFixed(5), lng: here.lng.toFixed(5), radius: String(radius) });
-    if (category) params.set('category', category);
     try {
-      const places = await api(`/api/places/nearby?${params}`);
+      const places = await placesApi.nearby({ lat: Number(here.lat.toFixed(5)), lng: Number(here.lng.toFixed(5)), radius, category });
       if (request !== requestRef.current) return; // a newer search has started
       setResults(places);
       setSelectedId((current) => (places.some((p) => p.googlePlaceId === current) ? current : null));

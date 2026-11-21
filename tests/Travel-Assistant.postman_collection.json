@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Travel Assistant API",
-    "description": "Runs against the API gateway (docker compose up --build). Covers the GraphQL user service, CRUD, filtering, validation errors, trips with flights, and the recommendation summary (business logic). Every request has tests; records it creates it deletes.",
+    "description": "Runs against the API gateway (docker compose up --build). Covers the gateway's GraphQL API (accounts and profiles, backed by the REST user service), CRUD, filtering, validation errors, trips with flights, and the recommendation summary (business logic). Every request has tests; records it creates it deletes.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -2273,7 +2273,7 @@
       ]
     },
     {
-      "name": "6. User service (GraphQL: accounts and My Profile)",
+      "name": "6. Gateway GraphQL (accounts and My Profile)",
       "item": [
         {
           "name": "Prepare: a unique email for this run",

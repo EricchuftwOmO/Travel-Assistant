@@ -3,7 +3,7 @@
 const ROUTE_RULES = [
     { service: 'budget', pattern: /^\/api\/trips\/[^/]+\/budget\/?$/ },
     { service: 'trip', pattern: /^\/api\/trips(\/|$)/ },
-    { service: 'user', pattern: /^\/api\/(auth|users|graphql)(\/|$)/ },
+    { service: 'user', pattern: /^\/api\/(auth|users)(\/|$)/ },
     { service: 'trip', pattern: /^\/api\/places(\/|$)/ },
     { service: 'search', pattern: /^\/api\/activities(\/|$)/ },
     { service: 'budget', pattern: /^\/api\/budget(\/|$)/ },

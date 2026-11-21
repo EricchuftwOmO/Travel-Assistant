@@ -6,6 +6,7 @@ const { buildRouteTable, matchRoute } = require('./routes');
 const { createProxy } = require('./proxy');
 const { requireLogin } = require('./auth');
 const { healthHandler } = require('./health');
+const { createGraphql } = require('./graphql');
 const { notFound, errorHandler } = require('./errors');
 
 function createApp(config) {
@@ -22,7 +23,13 @@ function createApp(config) {
 
     app.get('/api/health', healthHandler(config));
 
-    app.use(requireLogin(config.jwtSecret));
+    // GraphQL: the API the frontend uses. It combines the services (see src/graphql) and works out
+    // for itself which operations need a login, so it comes before the REST login check.
+    const yoga = createGraphql(config);
+    app.use(['/graphql', '/api/graphql'], yoga);
+
+    // REST: every /api/* route needs a token the user service accepts, except the public ones
+    app.use(requireLogin(config));
 
     // Forward /api/* to the owning service. No body parser: bodies are streamed as-is.
     // Not mounted with app.use('/api', ...), because that would strip "/api" from

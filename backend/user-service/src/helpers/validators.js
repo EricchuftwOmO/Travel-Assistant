@@ -5,6 +5,8 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const PHONE_PATTERN = /^\+?[0-9][0-9 ().-]{3,28}$/;
 const LANGUAGE_PATTERN = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/; // e.g. en, ja, zh-TW
+const GENDERS = ['MALE', 'FEMALE', 'NON_BINARY', 'OTHER', 'PREFER_NOT_TO_SAY'];
+const BUDGET_LEVELS = ['BUDGET', 'MODERATE', 'LUXURY'];
 const TRAVEL_STYLES = ['ADVENTURE', 'NATURE', 'CULTURE', 'FOOD', 'RELAXATION'];
 
 const fail = (details) => {
@@ -73,6 +75,15 @@ const isTimezone = (value) => {
   }
 };
 
+// Sign in with Google: the body carries the Google ID token (a JWT).
+const validateGoogleLogin = (input) => {
+  const { credential } = asObject(input);
+  if (typeof credential !== 'string' || credential === '' || credential.length > 4096) {
+    fail(['credential is required and must be the Google ID token']);
+  }
+  return credential;
+};
+
 // Registration takes either "name" or "firstName" (+ optional "lastName").
 const validateRegistration = (input) => {
   const body = asObject(input);
@@ -118,8 +129,7 @@ const validateProfile = (input) => {
   return { ...splitName(name), email };
 };
 
-// Basic Information tab. Only the fields sent are changed. Gender arrives already checked by the
-// GraphQL enum. Email is not here: changing it needs a separate verification step.
+// Basic Information tab. Only the fields sent are changed. Email is not here: changing it needs a separate verification step.
 const validateBasicInfo = (input) => {
   const body = asObject(input);
   const errors = [];
@@ -133,7 +143,13 @@ const validateBasicInfo = (input) => {
     }
     changes[field] = readText(body, field, 50, errors);
   }
-  if (body.gender !== undefined) changes.gender = body.gender;
+  if (body.gender !== undefined) {
+    if (body.gender !== null && !GENDERS.includes(body.gender)) {
+      errors.push(`gender must be one of: ${GENDERS.join(', ')}`);
+    } else {
+      changes.gender = body.gender;
+    }
+  }
 
   if (body.dateOfBirth !== undefined) {
     const value = body.dateOfBirth;
@@ -184,11 +200,16 @@ const validateLanguageSettings = (input) => {
   return changes;
 };
 
-// Travel Preferences tab. Enum values are already checked by GraphQL; duplicates are dropped.
+// Travel Preferences tab. Duplicate styles are dropped.
 const validateTravelPreferences = (input) => {
   const body = asObject(input);
   const changes = {};
-  if (body.budgetLevel !== undefined) changes.budgetLevel = body.budgetLevel;
+  if (body.budgetLevel !== undefined) {
+    if (body.budgetLevel !== null && !BUDGET_LEVELS.includes(body.budgetLevel)) {
+      fail([`budgetLevel must be one of: ${BUDGET_LEVELS.join(', ')}`]);
+    }
+    changes.budgetLevel = body.budgetLevel;
+  }
   if (body.travelStyles !== undefined && body.travelStyles !== null) {
     if (!Array.isArray(body.travelStyles) || !body.travelStyles.every((s) => TRAVEL_STYLES.includes(s))) {
       fail([`travelStyles must be a list of: ${TRAVEL_STYLES.join(', ')}`]);
@@ -201,6 +222,8 @@ const validateTravelPreferences = (input) => {
 module.exports = {
   validateRegistration,
   validateLogin,
+  validateGoogleLogin,
+  splitName,
   validateProfile,
   validateBasicInfo,
   validateLanguageSettings,
