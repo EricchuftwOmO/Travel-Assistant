@@ -394,7 +394,7 @@ type Advice {
   "The answer"
   content: String!
   model: String
-  "llm = model answer, stub = placeholder (no LLM key), user = supplied by the caller"
+  "llm = model answer, stub = a travel joke (no LLM key), user = supplied by the caller"
   source: AdviceSource
   createdAt: String!
 }
