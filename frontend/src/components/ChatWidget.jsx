@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useMatch } from 'react-router-dom';
 import { adviceApi, tripsApi } from '../api';
 import { useAuth } from '../auth';
@@ -8,9 +8,12 @@ import ChatMarkdown from './ChatMarkdown';
 // askAdvice), which takes the user from the login token, so a client cannot ask as someone else.
 // On a trip page the questions carry that trip, so answers can be specific to it.
 // Each question is answered on its own: the LLM service keeps no conversation memory.
+//
+// Every login starts with an empty chat (the widget is only mounted while someone is signed in).
+// Earlier conversations stay on the server and are loaded only when asked for, 20 at a time.
 
 const TRIP_NOTE = '\n\n(Trip: ';
-const HISTORY_LIMIT = 20;
+const HISTORY_PAGE = 20;
 
 // Saved prompts carry the trip details after the question; show only the question.
 const questionOf = (prompt) => prompt.split(TRIP_NOTE)[0];
@@ -35,8 +38,12 @@ export default function ChatWidget() {
   const tripId = tripMatch?.params.tripId;
 
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState([]);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [messages, setMessages] = useState([]); // this session
+  // Earlier conversations: null until asked for, then a list of messages (oldest first).
+  const [history, setHistory] = useState(null);
+  const [historyStatus, setHistoryStatus] = useState('idle'); // idle | loading | error
+  const [historyLimit, setHistoryLimit] = useState(0);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [trip, setTrip] = useState(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -45,17 +52,41 @@ export default function ChatWidget() {
   const listRef = useRef(null);
   const inputRef = useRef(null);
   const panelRef = useRef(null);
+  const scrollKeepRef = useRef(null); // the list's height before older messages were added on top
 
-  // Earlier questions and answers (all of them, not only this trip's), loaded the first time the
-  // chat opens. They arrive newest first, so they are reversed to read top to bottom.
-  useEffect(() => {
-    if (!open || historyLoaded) return;
-    setHistoryLoaded(true);
-    adviceApi
-      .recent(undefined, HISTORY_LIMIT)
-      .then((answers) => setMessages((current) => [...[...answers].reverse().flatMap(toMessages), ...current]))
-      .catch(() => {});
-  }, [open, historyLoaded]);
+  // Loads earlier questions and answers (all trips), one more page each time. They arrive newest
+  // first, so they are reversed to read top to bottom. Questions asked in this session are already
+  // on screen below, so they are left out here.
+  const loadHistory = async () => {
+    if (historyStatus === 'loading') return;
+    const limit = historyLimit + HISTORY_PAGE;
+    setHistoryStatus('loading');
+    try {
+      const answers = await adviceApi.recent(undefined, limit);
+      const shown = new Set(messages.map((message) => message.id));
+      scrollKeepRef.current = listRef.current?.scrollHeight ?? null;
+      setHistory([...answers].reverse().filter((advice) => !shown.has(`a${advice.id}`)).flatMap(toMessages));
+      setHistoryLimit(limit);
+      setHasMoreHistory(answers.length === limit);
+      setHistoryStatus('idle');
+    } catch {
+      setHistoryStatus('error');
+    }
+  };
+
+  // Older messages are added above, so keep the view where it was instead of jumping.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || scrollKeepRef.current === null) return;
+    list.scrollTop += list.scrollHeight - scrollKeepRef.current;
+    scrollKeepRef.current = null;
+  }, [history]);
+
+  // The header button: load earlier conversations (if not yet) and go to the top of the chat.
+  const showHistory = () => {
+    if (history === null) loadHistory();
+    listRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // The trip on screen, if any, so the assistant knows which trip "this trip" means.
   useEffect(() => {
@@ -143,12 +174,60 @@ export default function ChatWidget() {
               <strong>AI Travel Assistant</strong>
               <span className="chat-context">{trip ? `About: ${trip.title}` : 'Ask me anything about travel'}</span>
             </div>
+            <button
+              type="button"
+              className="icon-btn chat-close"
+              aria-label="Show earlier conversations"
+              title="Earlier conversations"
+              onClick={showHistory}
+            >
+              🕘
+            </button>
             <button type="button" className="icon-btn chat-close" aria-label="Close chat" onClick={() => setOpen(false)}>
               ✕
             </button>
           </header>
 
           <div className="chat-messages" ref={listRef} aria-live="polite">
+            <div className="chat-history-bar">
+              {historyStatus === 'loading' ? (
+                <span className="muted small">Loading earlier conversations…</span>
+              ) : historyStatus === 'error' ? (
+                <button type="button" className="link-btn small" onClick={loadHistory}>
+                  Couldn't load earlier conversations. Try again
+                </button>
+              ) : history === null ? (
+                <button type="button" className="chat-history-btn" onClick={loadHistory}>
+                  🕘 View earlier conversations
+                </button>
+              ) : hasMoreHistory ? (
+                <button type="button" className="chat-history-btn" onClick={loadHistory}>
+                  Load older
+                </button>
+              ) : (
+                <span className="muted small">
+                  {history.length ? 'That’s everything from before.' : 'No earlier conversations.'}
+                </span>
+              )}
+            </div>
+
+            {history?.map((message) => (
+              <div key={`h-${message.id}`} className={`chat-row chat-row-${message.role === 'user' ? 'user' : 'bot'} chat-row-old`}>
+                <div className={`chat-bubble chat-bubble-${message.role}`}>
+                  {message.stub
+                    ? questionOf(message.text)
+                    : message.role === 'assistant'
+                      ? <ChatMarkdown text={message.text} />
+                      : message.text}
+                </div>
+              </div>
+            ))}
+            {history?.length > 0 && (
+              <div className="chat-divider" role="separator">
+                <span>This session</span>
+              </div>
+            )}
+
             {messages.length === 0 && !sending && (
               <div className="chat-welcome">
                 <p>
