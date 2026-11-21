@@ -15,6 +15,9 @@ ARG VITE_GOOGLE_MAPS_API_KEY=
 ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
 ARG VITE_GOOGLE_MAP_ID=
 ENV VITE_GOOGLE_MAP_ID=$VITE_GOOGLE_MAP_ID
+# Google OAuth web client ID for the Sign in with Google button (public). Without it the button is hidden.
+ARG VITE_GOOGLE_CLIENT_ID=
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 RUN npm run build
 
 FROM nginx:1.27-alpine

@@ -46,6 +46,22 @@ const UPDATABLE = {
   timezone: 'timezone',
 };
 
+// The account for a Google identity: the one linked to this google_sub, else an unlinked account
+// with the same email (which becomes linked), else a new one. Returns { user } or { conflict: true }
+// when the email belongs to an account linked to a different Google identity.
+const findOrCreateGoogleUser = async ({ sub, email, firstName, lastName }) => {
+  const bySub = await db.query(`SELECT ${PUBLIC_COLUMNS} FROM users WHERE google_sub = $1`, [sub]);
+  if (bySub.rows[0]) return { user: bySub.rows[0] };
+
+  const { rows } = await db.query(
+    `INSERT INTO users (first_name, last_name, email, google_sub) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (email) DO UPDATE SET google_sub = EXCLUDED.google_sub WHERE users.google_sub IS NULL
+     RETURNING ${PUBLIC_COLUMNS}`,
+    [firstName, lastName, email, sub]
+  );
+  return rows[0] ? { user: rows[0] } : { conflict: true };
+};
+
 // Partial update: only the fields present in `changes` are written (null clears an optional field).
 const updateUser = async (id, changes) => {
   const sets = [];
@@ -97,6 +113,7 @@ module.exports = {
   createUser,
   findUserById,
   findCredentialsByEmail,
+  findOrCreateGoogleUser,
   updateUser,
   deleteUser,
   findTravelPreferences,

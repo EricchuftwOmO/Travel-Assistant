@@ -1,0 +1,28 @@
+# Optional, for development only: publishes each private service on this computer (127.0.0.1) so its
+# Swagger UI can be opened at http://localhost:<port>/docs. Use it together with the main file:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# Do not use it for a deployment: the trip service trusts the X-User-Id header, so it must only be reachable
+# through the gateway and the user service.
+
+services:
+  user-service:
+    ports:
+      - "127.0.0.1:3009:3009"
+  trip-service:
+    ports:
+      - "127.0.0.1:3001:3001"
+  flight-service:
+    ports:
+      - "127.0.0.1:3004:3004"
+  hotel-service:
+    ports:
+      - "127.0.0.1:3005:3005"
+  car-rental-service:
+    ports:
+      - "127.0.0.1:3006:3006"
+  activity-service:
+    ports:
+      - "127.0.0.1:3007:3007"
+  llm-service:
+    ports:
+      - "127.0.0.1:3008:3008"

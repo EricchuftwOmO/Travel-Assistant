@@ -1,7 +1,7 @@
 {
   "name": "user-service",
   "version": "1.0.0",
-  "description": "Travel Assistant: accounts, login and the user profile (GraphQL + REST login, PostgreSQL, JWT)",
+  "description": "Travel Assistant: accounts, login and the user profile (REST, Google sign-in, PostgreSQL, JWT)",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
@@ -14,7 +14,7 @@
     "bcryptjs": "^3.0.3",
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
-    "graphql": "^17.1.0",
+    "google-auth-library": "^11.3.4",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.1",
     "swagger-ui-express": "^5.0.1",

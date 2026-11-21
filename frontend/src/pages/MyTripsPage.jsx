@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api } from '../api';
+import { tripsApi } from '../api';
 import { dayCount, formatRange } from '../format';
 import ErrorMessage from '../components/ErrorMessage';
 import Modal from '../components/Modal';
@@ -22,11 +22,8 @@ export default function MyTripsPage() {
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (status) params.set('status', status);
-    if (search.trim()) params.set('search', search.trim());
     try {
-      setTrips(await api(`/api/trips?${params}`));
+      setTrips(await tripsApi.list({ status, search: search.trim() }));
       setError(null);
     } catch (err) {
       setError(err);
@@ -111,7 +108,7 @@ function NewTripDialog({ onClose, onCreated }) {
     setBusy(true);
     setError(null);
     try {
-      onCreated(await api('/api/trips', { method: 'POST', body: form }));
+      onCreated(await tripsApi.create(form));
     } catch (err) {
       setError(err);
       setBusy(false);

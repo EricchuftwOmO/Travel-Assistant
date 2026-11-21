@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api } from '../api';
-import { useAuth } from '../auth';
+import { adviceApi, placesApi, tripsApi } from '../api';
 import { dayCount, formatDate, formatDateTime, formatMoney, formatRange } from '../format';
 import ErrorMessage from '../components/ErrorMessage';
 import Modal from '../components/Modal';
@@ -19,12 +18,9 @@ export default function TripDetailsPage() {
 
   const load = useCallback(async () => {
     try {
-      const [loadedTrip, loadedDays] = await Promise.all([
-        api(`/api/trips/${tripId}`),
-        api(`/api/trips/${tripId}/itineraries`),
-      ]);
-      setTrip(loadedTrip);
-      setDays(loadedDays);
+      const loaded = await tripsApi.get(tripId); // the trip, its flights and its days, in one request
+      setTrip(loaded);
+      setDays(loaded.itineraries);
       setError(null);
     } catch (err) {
       setError(err);
@@ -107,7 +103,7 @@ function OverviewTab({ trip, onChanged }) {
   const removeFlight = async (flight) => {
     if (!window.confirm(`Remove ${flight.airline} ${flight.flightNumber} from this trip?`)) return;
     try {
-      await api(`/api/trips/${trip.id}/flights/${flight.id}`, { method: 'DELETE' });
+      await tripsApi.detachFlight(trip.id, flight.id);
       onChanged();
     } catch (err) {
       setError(err);
@@ -161,7 +157,6 @@ const TOPICS = ['general', 'itinerary', 'food', 'packing', 'budget', 'safety'];
 
 // Item 5: the AI Travel Assistant (LLM service). Answers are saved, so earlier ones are listed.
 function AdvicePanel({ trip }) {
-  const { user } = useAuth();
   const [prompt, setPrompt] = useState('');
   const [topic, setTopic] = useState('itinerary');
   const [answers, setAnswers] = useState([]);
@@ -169,10 +164,11 @@ function AdvicePanel({ trip }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api(`/api/advice?userId=${encodeURIComponent(user.id)}&tripId=${trip.id}&sort=created_at&order=desc&limit=5`)
-      .then((result) => setAnswers(result.data))
+    adviceApi
+      .recent(trip.id)
+      .then(setAnswers)
       .catch(() => setAnswers([]));
-  }, [trip.id, user.id]);
+  }, [trip.id]);
 
   const ask = async (event) => {
     event.preventDefault();
@@ -181,10 +177,7 @@ function AdvicePanel({ trip }) {
     setError(null);
     try {
       const fullPrompt = `${prompt.trim()}\n\n(Trip: ${trip.title}, ${trip.destination}, ${trip.startDate} to ${trip.endDate})`;
-      const advice = await api('/api/advice', {
-        method: 'POST',
-        body: { user_id: String(user.id), trip_id: trip.id, topic, prompt: fullPrompt.slice(0, 1000) },
-      });
+      const advice = await adviceApi.ask({ tripId: trip.id, topic, prompt: fullPrompt.slice(0, 1000) });
       setAnswers((current) => [advice, ...current]);
       setPrompt('');
     } catch (err) {
@@ -238,16 +231,14 @@ function DayTab({ trip, dayNumber }) {
   const [adding, setAdding] = useState(null); // null, or the position to insert at
   const [dragIndex, setDragIndex] = useState(null);
 
-  const base = `/api/trips/${trip.id}/itineraries/${dayNumber}`;
-
   const load = useCallback(async () => {
     try {
-      setDay(await api(base));
+      setDay(await tripsApi.day(trip.id, dayNumber));
       setError(null);
     } catch (err) {
       setError(err);
     }
-  }, [base]);
+  }, [trip.id, dayNumber]);
 
   useEffect(() => {
     load();
@@ -256,7 +247,7 @@ function DayTab({ trip, dayNumber }) {
   const saveOrder = async (items) => {
     setDay((current) => ({ ...current, items })); // show the new order right away
     try {
-      setDay(await api(`${base}/items/order`, { method: 'PUT', body: { itemIds: items.map((item) => item.id) } }));
+      setDay(await tripsApi.reorder(trip.id, dayNumber, items.map((item) => item.id)));
     } catch (err) {
       setError(err);
       load();
@@ -273,7 +264,7 @@ function DayTab({ trip, dayNumber }) {
 
   const remove = async (item) => {
     try {
-      await api(`${base}/items/${item.id}`, { method: 'DELETE' });
+      await tripsApi.removeItem(trip.id, dayNumber, item.id);
       load();
     } catch (err) {
       setError(err);
@@ -350,7 +341,7 @@ function DayTab({ trip, dayNumber }) {
       {adding !== null && (
         <AddPlaceDialog
           trip={trip}
-          base={base}
+          dayNumber={dayNumber}
           dayItems={day.items}
           itemCount={day.items.length}
           initialPosition={adding}
@@ -366,13 +357,14 @@ function DayTab({ trip, dayNumber }) {
 }
 
 // Google map when both keys are set up; otherwise (or on request) the sample catalog.
-function AddPlaceDialog({ trip, base, dayItems, itemCount, initialPosition, onClose, onAdded }) {
+function AddPlaceDialog({ trip, dayNumber, dayItems, itemCount, initialPosition, onClose, onAdded }) {
   const [mode, setMode] = useState(MAPS_API_KEY ? 'checking' : 'catalog');
   const [googleReady, setGoogleReady] = useState(false);
 
   useEffect(() => {
     if (!MAPS_API_KEY) return;
-    api('/api/places/config')
+    placesApi
+      .config()
       .then((config) => {
         setGoogleReady(config.googlePlaces);
         setMode(config.googlePlaces ? 'map' : 'catalog');
@@ -381,7 +373,7 @@ function AddPlaceDialog({ trip, base, dayItems, itemCount, initialPosition, onCl
   }, []);
 
   const addGooglePlace = async ({ googlePlaceId, position }) => {
-    await api(`${base}/items`, { method: 'POST', body: { googlePlaceId, position } });
+    await tripsApi.addItem(trip.id, dayNumber, { googlePlaceId, position });
     onAdded();
   };
 
@@ -413,7 +405,7 @@ function AddPlaceDialog({ trip, base, dayItems, itemCount, initialPosition, onCl
   return (
     <CatalogPlaceDialog
       trip={trip}
-      base={base}
+      dayNumber={dayNumber}
       itemCount={itemCount}
       initialPosition={initialPosition}
       onClose={onClose}
@@ -424,8 +416,8 @@ function AddPlaceDialog({ trip, base, dayItems, itemCount, initialPosition, onCl
   );
 }
 
-// The sample catalog (GET /api/places): works without any Google key.
-function CatalogPlaceDialog({ trip, base, itemCount, initialPosition, onClose, onAdded, mapAvailable, onUseMap }) {
+// The sample place catalog: works without any Google key.
+function CatalogPlaceDialog({ trip, dayNumber, itemCount, initialPosition, onClose, onAdded, mapAvailable, onUseMap }) {
   const [city, setCity] = useState(trip.destination);
   const [category, setCategory] = useState('');
   const [places, setPlaces] = useState(null);
@@ -433,18 +425,15 @@ function CatalogPlaceDialog({ trip, base, itemCount, initialPosition, onClose, o
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (city.trim()) params.set('city', city.trim());
-    if (category) params.set('category', category);
     const timer = setTimeout(() => {
-      api(`/api/places?${params}`).then(setPlaces).catch(setError);
+      placesApi.catalog({ city: city.trim(), category }).then(setPlaces).catch(setError);
     }, 200);
     return () => clearTimeout(timer);
   }, [city, category]);
 
   const add = async (place) => {
     try {
-      await api(`${base}/items`, { method: 'POST', body: { placeId: place.id, position } });
+      await tripsApi.addItem(trip.id, dayNumber, { placeId: place.id, position });
       onAdded();
     } catch (err) {
       setError(err);
@@ -530,10 +519,7 @@ function EditTripDialog({ trip, onClose, onSaved }) {
     setBusy(true);
     setError(null);
     try {
-      await api(`/api/trips/${trip.id}`, {
-        method: 'PUT',
-        body: { title: form.title, destination: form.destination, startDate: form.startDate, endDate: form.endDate },
-      });
+      await tripsApi.update(trip.id, form);
       onSaved();
     } catch (err) {
       setError(err);
@@ -544,7 +530,7 @@ function EditTripDialog({ trip, onClose, onSaved }) {
   const remove = async () => {
     if (!window.confirm(`Delete "${trip.title}" with all its days and flights? This cannot be undone.`)) return;
     try {
-      await api(`/api/trips/${trip.id}`, { method: 'DELETE' });
+      await tripsApi.remove(trip.id);
       navigate('/trips');
     } catch (err) {
       setError(err);

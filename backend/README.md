@@ -5,8 +5,8 @@ Each service has its own folder, `Dockerfile`, `package.json`, `GET /health` and
 
 | Folder | Port | Owns | Data |
 |---|---|---|---|
-| `gateway` | 8080 | login check, routing, CORS, request IDs, timeouts, `/api/health` | none |
-| `user-service` | 3009 | `/api/graphql` (GraphQL), `/api/auth`, `/api/users` | `user_db` |
+| `gateway` | 8080 | GraphQL (`/graphql`, `/api/graphql`), routing, login check via the user service, CORS, request IDs, timeouts, `/api/health` | none |
+| `user-service` | 3009 | `/api/auth` (register, login, Google, validate), `/api/users` (REST) | `user_db` |
 | `trip-service` | 3001 | `/api/trips` (+ flights, itineraries), `/api/places` | `trip_db` |
 | `flight-service` | 3004 | `/api/flights` | `flight_db` + Redis cache |
 | `hotel-service` | 3005 | `/api/hotels` | `hotel_db` + Redis cache |
@@ -18,24 +18,35 @@ The Budget service is planned, not built yet.
 
 ## Login
 
-The user service signs the token (JWT, `JWT_SECRET`); the gateway checks it before forwarding.
-Public: `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/graphql` (the user service checks the
-token per field), health checks, and `GET` on flights, hotels,
-car rentals and activities. Everything else returns `401`. The gateway passes the user id on as `X-User-Id`
-and drops any `X-User-Id` a client sends. The trip service checks the token again itself.
-Deleting an account (`deleteMe`) first asks the trip service to delete that user's trips
-(`DELETE /internal/my-data`, not routed by the gateway), then deletes the account.
+Only the user service does authentication. It signs the token (JWT, `JWT_SECRET`) at `POST /api/auth/register`,
+`/login` or `/google`, and no other service knows the secret. For every other protected route the gateway calls the
+user service's `GET /api/auth/validate` with the client's `Authorization` header, then passes the user id on as `X-User-Id`
+(a client-sent `X-User-Id` is dropped). The trip service trusts that header, so it is only reachable through the gateway
+and the user service.
+Public: register, login, Google sign-in, health checks, and `GET` on flights, hotels, car rentals and activities.
+Everything else returns `401`. Deleting an account first asks the trip service to delete that user's trips
+(`DELETE /internal/my-data` with `X-User-Id`, not routed by the gateway), then deletes the account.
 
-## User service (GraphQL)
+## Sign in with Google
 
-`POST /graphql` with `{ query, variables }`. Queries: `me`, `myLanguageSettings`, `myTravelPreferences`.
-Mutations: `register`, `login`, `deleteMe`, and for the My Profile page `updateBasicInfo`,
-`updateLanguageSettings`, `updateTravelPreferences` (partial updates; `null` clears an optional field).
-Profiles live in `users` (first/last name, gender, date of birth, phone, country, language, timezone) and
+The browser gets a Google ID token (Google Identity Services, as in tutorial 7) and sends it to
+GraphQL `loginWithGoogle(credential)`, which calls `POST /api/auth/google` on the user service. The user service
+verifies the token with `google-auth-library` against `GOOGLE_CLIENT_ID` (and requires a verified email), then finds the
+account by Google id, links an existing account with the same email, or creates one, and answers with our own
+JWT like a password login. Set `GOOGLE_CLIENT_ID` in `.env` (user service and frontend build; empty = off, the endpoint
+returns 503 and the button is hidden). Add the page's address (`http://localhost:5173`) as an authorised JavaScript
+origin for the client ID. The client secret is not needed.
+
+## User service (REST)
+
+JSON over HTTP, always about "me" (the account comes from the token). `POST /api/auth/register|login|google`,
+`GET /api/auth/validate`, `GET|PUT|DELETE /api/users/me`, `PATCH /api/users/me/basic-info`,
+`GET|PATCH /api/users/me/language-settings`, `GET|PATCH /api/users/me/travel-preferences`. Full spec: `openapi.yaml`
+(Swagger UI on port 3009). The frontend does not call these directly, nor any other service's REST API: it uses only the
+gateway's GraphQL API (`backend/gateway/README.md`), which calls them. The REST routes stay available through the gateway for other clients and the Postman tests.
+Profiles live in `users` (first/last name, gender, date of birth, phone, country, language, timezone, `google_sub`) and
 `travel_preferences` (budget level, travel styles). `schema.sql` runs on every start and upgrades an older
-`users` table (single `name` column) in place.
-The schema text is at `GET /graphql/schema`. Field errors return 200 with `errors[].extensions.code`
-(`BAD_USER_INPUT`, `UNAUTHENTICATED`, `CONFLICT`); a query that does not fit the schema returns 400.
+`users` table in place.
 
 ## Google Places (Add place map)
 
@@ -54,7 +65,7 @@ the flight from the flight service and copy its details into `trip_flights`. `GE
 ## Docs
 
 API docs are in `gateway/openapi.yaml` (everything) and each service's `openapi.yaml`, also served as
-Swagger UI at `http://localhost:<port>/docs`. The trip service has its own [README](trip-service/README.md).
+Swagger UI at `http://localhost:<port>/docs` (only with `docker-compose.dev.yml`; the services are private otherwise). The trip service has its own [README](trip-service/README.md).
 
 ## The CRUD services
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api';
+import { flightsApi, tripsApi } from '../api';
 import { addDays, duration, formatDate, formatDateTime, formatMoney, formatRange } from '../format';
 import ErrorMessage from '../components/ErrorMessage';
 import Modal from '../components/Modal';
@@ -19,13 +19,8 @@ export default function FlightSearchPage() {
   const runSearch = async (criteria) => {
     setLoading(true);
     setError(null);
-    const params = new URLSearchParams({ sort: 'price', order: 'asc', limit: '50' });
-    for (const [key, value] of Object.entries(criteria)) {
-      if (String(value).trim()) params.set(key, String(value).trim());
-    }
     try {
-      const result = await api(`/api/flights?${params}`);
-      setFlights(result.data);
+      setFlights(await flightsApi.search(criteria));
     } catch (err) {
       setError(err);
       setFlights(null);
@@ -110,19 +105,19 @@ export default function FlightSearchPage() {
                   <div className="flight-route">
                     <span className="airport">{flight.origin}</span>
                     <span className="route-line" aria-hidden="true">
-                      <span>{duration(flight.depart_at, flight.arrive_at)}</span>
+                      <span>{duration(flight.departAt, flight.arriveAt)}</span>
                     </span>
                     <span className="airport">{flight.destination}</span>
                   </div>
                   <div className="flight-meta">
-                    <strong>{flight.airline}</strong> · {flight.flight_number}
+                    <strong>{flight.airline}</strong> · {flight.flightNumber}
                     <div className="muted small">
-                      {formatDateTime(flight.depart_at)} → {formatDateTime(flight.arrive_at)}
+                      {formatDateTime(flight.departAt)} → {formatDateTime(flight.arriveAt)}
                     </div>
                   </div>
                   <div className="flight-price">
                     <strong>{formatMoney(flight.price, flight.currency)}</strong>
-                    <span className="muted small">{flight.seats_available} seats left</span>
+                    <span className="muted small">{flight.seatsAvailable} seats left</span>
                   </div>
                   <button type="button" className="btn btn-primary" onClick={() => setSelected(flight)}>
                     Add to Trip
@@ -150,7 +145,8 @@ function AddToTripDialog({ flight, onClose }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api('/api/trips?status=upcoming')
+    tripsApi
+      .list({ status: 'upcoming' })
       .then((list) => {
         setTrips(list);
         if (list.length) setTripId(String(list[0].id));
@@ -159,7 +155,7 @@ function AddToTripDialog({ flight, onClose }) {
   }, []);
 
   // The trip starts on the departure day, in the traveler's own time zone.
-  const departed = new Date(flight.depart_at);
+  const departed = new Date(flight.departAt);
   const startDate = [
     departed.getFullYear(),
     String(departed.getMonth() + 1).padStart(2, '0'),
@@ -171,7 +167,7 @@ function AddToTripDialog({ flight, onClose }) {
     setBusy(true);
     setError(null);
     try {
-      const trip = await api('/api/trips', { method: 'POST', body: { ...form, flightId: flight.id } });
+      const trip = await tripsApi.create({ ...form, flightId: flight.id });
       navigate(`/trips/${trip.id}`);
     } catch (err) {
       setError(err);
@@ -183,7 +179,7 @@ function AddToTripDialog({ flight, onClose }) {
     setBusy(true);
     setError(null);
     try {
-      await api(`/api/trips/${tripId}/flights`, { method: 'POST', body: { flightId: flight.id } });
+      await tripsApi.attachFlight(tripId, flight.id);
       navigate(`/trips/${tripId}`);
     } catch (err) {
       setError(err);
@@ -194,8 +190,8 @@ function AddToTripDialog({ flight, onClose }) {
   return (
     <Modal title="Add to Trip" onClose={onClose}>
       <p className="muted">
-        {flight.airline} {flight.flight_number} · {flight.origin} → {flight.destination} ·{' '}
-        {formatDate(flight.depart_at)} · {formatMoney(flight.price, flight.currency)}
+        {flight.airline} {flight.flightNumber} · {flight.origin} → {flight.destination} ·{' '}
+        {formatDate(flight.departAt)} · {formatMoney(flight.price, flight.currency)}
       </p>
 
       <div className="segmented" role="tablist">

@@ -7,7 +7,7 @@ Diagrams are [Mermaid](https://mermaid.js.org/) and render on GitHub. Dashed box
 ```mermaid
 flowchart TB
     client["CLIENT<br/>React app :5173"]
-    gateway["API GATEWAY :8080<br/>login check (JWT) · routing · CORS · X-Request-Id · timeouts · /api/health"]
+    gateway["API GATEWAY :8080<br/>GraphQL API · login check via user service · routing · CORS · X-Request-Id · timeouts · /api/health"]
 
     client --> gateway
 
@@ -16,10 +16,11 @@ flowchart TB
         budget["BUDGET SERVICE :3003"]:::planned
     end
 
-    user["USER SERVICE :3009<br/>/api/graphql (GraphQL) · /api/auth<br/>(signs JWTs)"]
-    trip["TRIP SERVICE :3001<br/>/api/trips (+ flights, itineraries) · /api/places<br/>(checks JWT)"]
+    user["USER SERVICE :3009<br/>/api/auth (incl. Google) · /api/users (REST)<br/>(signs and validates JWTs)"]
+    trip["TRIP SERVICE :3001<br/>/api/trips (+ flights, itineraries) · /api/places<br/>(trusts X-User-Id from the gateway)"]
 
-    gateway -->|"/api/graphql, /api/auth, /api/users"| user
+    gateway -->|"/api/auth, /api/users, GraphQL accounts"| user
+    gateway -->|"every protected request: GET /api/auth/validate"| user
     gateway -->|"/api/trips, /api/places"| trip
     user -->|"delete account: DELETE /internal/my-data"| trip
     trip -->|"attach flight: GET /api/flights/:id"| flight
@@ -91,18 +92,19 @@ gateway), lets the model choose among the results, adds up the cost in code, and
 |---|---|---|---|---|
 | `gateway` | `backend/gateway` | 8080 | `8080` (all clients) | none (answers 502 if a service is down) |
 | `frontend` | `frontend` (nginx) | 80 | `5173` | gateway |
-| `user-service` | `backend/user-service` | 3009 | `127.0.0.1:3009` | postgres (healthy) |
-| `trip-service` | `backend/trip-service` | 3001 | `127.0.0.1:3001` | postgres (healthy) |
-| `flight-service` | `backend/flight-service` | 3004 | `127.0.0.1:3004` | postgres (healthy), redis |
-| `hotel-service` | `backend/hotel-service` | 3005 | `127.0.0.1:3005` | postgres (healthy), redis |
-| `car-rental-service` | `backend/car-rental-service` | 3006 | `127.0.0.1:3006` | postgres (healthy), redis |
-| `activity-service` | `backend/activity-service` | 3007 | `127.0.0.1:3007` | postgres (healthy), redis |
-| `llm-service` | `backend/llm-service` | 3008 | `127.0.0.1:3008` | postgres (healthy) |
+| `user-service` | `backend/user-service` | 3009 | no (dev override only) | postgres (healthy) |
+| `trip-service` | `backend/trip-service` | 3001 | no (dev override only) | postgres (healthy) |
+| `flight-service` | `backend/flight-service` | 3004 | no (dev override only) | postgres (healthy), redis |
+| `hotel-service` | `backend/hotel-service` | 3005 | no (dev override only) | postgres (healthy), redis |
+| `car-rental-service` | `backend/car-rental-service` | 3006 | no (dev override only) | postgres (healthy), redis |
+| `activity-service` | `backend/activity-service` | 3007 | no (dev override only) | postgres (healthy), redis |
+| `llm-service` | `backend/llm-service` | 3008 | no (dev override only) | postgres (healthy) |
 | `postgres` | `postgres:16` | 5432 | no | none |
 | `redis` | `redis:7-alpine` | 6379 | no | none |
 
-The `127.0.0.1` ports exist only so each service's Swagger UI (`/docs`) can be opened
-during development.
+Only the gateway and the web app publish ports. Every other service is private to the Docker network.
+`docker-compose.dev.yml` is an optional override that opens them on `127.0.0.1` so each service's Swagger UI
+(`/docs`) can be browsed during development.
 
 ## 3. A cached read (flights, hotels, car rentals, activities)
 
@@ -282,7 +284,7 @@ Travel-Assistant/
 ├── docs/ARCHITECTURE.md        this file
 └── backend/
     ├── gateway/                routing table in src/routes.js, URLs in src/config.js, openapi.yaml
-    ├── user-service/           accounts and login: GraphQL (src/graphql.js) + REST login
+    ├── user-service/           accounts, login, Google sign-in and profiles (REST, src/routes.js)
     ├── trip-service/           trips, trip flights, itineraries (hand-written; see its README.md)
     ├── flight-service/         each CRUD service has the same layout:
     ├── hotel-service/            server.js            start-up
@@ -292,4 +294,4 @@ Travel-Assistant/
                                   openapi.yaml, Dockerfile, package.json
 ```
 
-API reference: `backend/gateway/openapi.yaml` and each service's Swagger UI at `http://localhost:<port>/docs`.
+API reference: `backend/gateway/openapi.yaml` and each service's Swagger UI at `http://localhost:<port>/docs` (with `docker-compose.dev.yml`).

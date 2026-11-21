@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   first_name    TEXT NOT NULL,
   last_name     TEXT NOT NULL DEFAULT '',
   email         TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
+  password_hash TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -22,6 +22,10 @@ ALTER TABLE users
   ADD COLUMN IF NOT EXISTS country       TEXT,
   ADD COLUMN IF NOT EXISTS language      TEXT NOT NULL DEFAULT 'en',
   ADD COLUMN IF NOT EXISTS timezone      TEXT NOT NULL DEFAULT 'America/Los_Angeles';
+
+-- Sign in with Google: accounts that only use Google have no password, and keep Google's stable id.
+ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT UNIQUE;
 
 -- Upgrade: split the old single "name" column ("Alice Chen" -> "Alice" + "Chen"), then drop it.
 DO $$

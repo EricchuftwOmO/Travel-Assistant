@@ -4,10 +4,10 @@ info:
   version: 0.2.0
   description: Single entry point for the Travel Assistant frontend. The API gateway forwards every /api/*
     request to the service that owns it (User, Trip, Activity, Budget, Flight, Hotel, Car Rental, LLM advice) and
-    checks the login token (bearer JWT) on every route except sign-up, login and reading flights, hotels,
-    car rentals and activities, and adds CORS, X-Request-Id tracing, timeouts and uniform errors. Only the endpoints implemented so far are
-    listed here. Each service also publishes its own spec and Swagger UI at /docs on its development port
-    (3009 accounts and GraphQL, 3001 trips, 3004 flights, 3005 hotels, 3006 car rentals, 3007 activities, 3008 advice).
+    asks the user service to check the login token (bearer JWT) on every route except sign-up, login, Google sign-in
+    and reading flights, hotels, car rentals and activities, and adds CORS, X-Request-Id tracing, timeouts and uniform errors. Only the endpoints implemented so far are
+    listed here. Each service also publishes its own spec and Swagger UI at /docs on its development port (private; published only by docker-compose.dev.yml)
+    (3009 accounts (REST), 3001 trips, 3004 flights, 3005 hotels, 3006 car rentals, 3007 activities, 3008 advice).
 servers:
   - url: http://localhost:8080
     description: API gateway (Docker Compose and default local port)
@@ -109,6 +109,36 @@ paths:
         "504":
           $ref: "#/components/responses/UpstreamTimeout"
       security: []
+  /api/auth/google:
+    post:
+      tags:
+        - Auth
+      summary: Sign in with Google
+      description: Send the Google ID token from Google Sign-In. Creates the account on first use. Same response as login.
+      operationId: googleLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [credential]
+              properties:
+                credential:
+                  type: string
+                  description: The Google ID token (a JWT)
+      responses:
+        "200":
+          description: Google token accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          description: The Google token is invalid or expired
+      security: []
   /api/auth/login:
     post:
       tags:
@@ -161,12 +191,16 @@ paths:
     post:
       tags:
         - Users
-      summary: User service GraphQL API (login, register, My Profile, deleteMe)
+      summary: GraphQL API (accounts, Sign in with Google, My Profile, trips, itineraries, places, advice, catalog)
       description: |
-        Owned by the user service. Public at the gateway; the user service checks the bearer token
-        for `me`, `updateMe` and `deleteMe`. Field errors come back with HTTP 200 in `errors[]` with
-        `extensions.code` (BAD_USER_INPUT, UNAUTHENTICATED, CONFLICT, UPSTREAM_UNAVAILABLE). A query
-        that does not match the schema returns 400 GRAPHQL_VALIDATION_FAILED. Schema text: GET /api/graphql/schema.
+        Served by the gateway itself (also at `/graphql`, with GraphiQL in a browser). Accounts are backed by the
+        REST user service; account fields pass the bearer token to it, and `myTrips` / `trip` ask it who the
+        caller is. Public at the gateway. Field errors come back with HTTP 200 in `errors[]` with
+        `extensions.code` (BAD_USER_INPUT, UNAUTHENTICATED, NOT_FOUND, CONFLICT, UPSTREAM_UNAVAILABLE), `extensions.status`
+        and `extensions.details`. A query that does not match the schema returns 400 GRAPHQL_VALIDATION_FAILED.
+        The frontend uses only this endpoint. It also covers the catalog (flights, hotels, car rentals, activities), trips,
+        flights on trips, itineraries, places, and AI advice; the user id for trips and advice always comes from the
+        user service, never from the client. See `backend/gateway/src/graphql/schema.graphql` for every field.
 
         ```graphql
         type User {
@@ -178,6 +212,7 @@ paths:
         type Mutation {
           register(input: RegisterInput!): AuthPayload!
           login(email: String!, password: String!): AuthPayload!
+          loginWithGoogle(credential: String!): AuthPayload!
           updateBasicInfo(input: UpdateBasicInfoInput!): User!
           updateLanguageSettings(input: UpdateLanguageSettingsInput!): LanguageSettings!
           updateTravelPreferences(input: UpdateTravelPreferencesInput!): TravelPreferences!

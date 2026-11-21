@@ -1,11 +1,10 @@
-// My Profile: validation of the three tabs, and auth on the profile operations (no database needed).
+// My Profile: validation of the three tabs (no database needed).
 
 process.env.JWT_SECRET = 'test-secret';
 process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://user:pass@127.0.0.1:1/none';
 
-const { test, before, after } = require('node:test');
+const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const app = require('../src/app');
 const {
   validateBasicInfo,
   validateLanguageSettings,
@@ -65,43 +64,8 @@ test('registration splits a full name into first and last name', () => {
   assert.deepEqual({ firstName, lastName }, { firstName: 'Chun-Wei', lastName: 'Chu' });
 });
 
-let server;
-let base;
-
-before(async () => {
-  server = app.listen(0, '127.0.0.1');
-  await new Promise((resolve) => server.once('listening', resolve));
-  base = `http://127.0.0.1:${server.address().port}`;
-});
-
-after(() => new Promise((resolve) => server.close(resolve)));
-
-const gql = async (query) => {
-  const res = await fetch(`${base}/graphql`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
-  });
-  return { status: res.status, body: await res.json() };
-};
-
-test('profile mutations need a token', async () => {
-  for (const mutation of [
-    'mutation { updateBasicInfo(input: { firstName: "A" }) { id } }',
-    'mutation { updateLanguageSettings(input: { language: "en" }) { language } }',
-    'mutation { updateTravelPreferences(input: { budgetLevel: LUXURY }) { budgetLevel } }',
-  ]) {
-    const { body } = await gql(mutation);
-    assert.equal(body.errors[0].extensions.code, 'UNAUTHENTICATED', mutation);
-  }
-});
-
-test('profile queries are null without a token', async () => {
-  const { body } = await gql('{ myLanguageSettings { language } myTravelPreferences { budgetLevel } }');
-  assert.deepEqual(body.data, { myLanguageSettings: null, myTravelPreferences: null });
-});
-
-test('an unknown enum value is rejected by the schema', async () => {
-  const { status } = await gql('mutation { updateBasicInfo(input: { gender: ROBOT }) { id } }');
-  assert.equal(status, 400);
+test('gender and budget level must be known values', () => {
+  assert.match(detailsOf(() => validateBasicInfo({ gender: 'ROBOT' }))[0], /gender must be one of/);
+  assert.match(detailsOf(() => validateTravelPreferences({ budgetLevel: 'FREE' }))[0], /budgetLevel must be one of/);
+  assert.deepEqual(validateBasicInfo({ gender: null }), { gender: null });
 });

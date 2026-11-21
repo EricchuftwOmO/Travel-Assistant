@@ -10,7 +10,7 @@ The Travel Assistant service for trips, the flights attached to them, and day-by
 - **Day-by-day itineraries:** every trip gets one day per date automatically. Add a place at any position, reorder a day, remove one place, or clear a whole day.
 - **Places:** browse sample places by city and category to add to an itinerary.
 - **Consistent data:** multi-step changes run in database transactions, and a trip cannot be shortened in a way that would delete planned places.
-- **Data privacy:** JWT authentication, with every trip query scoped to the signed-in user.
+- **Data privacy:** every trip query is scoped to the signed-in user (the gateway checks the login with the user service and sends `X-User-Id`).
 - **Validation and errors:** consistent JSON error responses with meaningful HTTP status codes.
 - **API documentation:** an OpenAPI 3 specification with an interactive Swagger UI page.
 
@@ -20,7 +20,6 @@ The Travel Assistant service for trips, the flights attached to them, and day-by
 |---|---|
 | Runtime and framework | Node.js, Express 5 |
 | Database | PostgreSQL 17, node-postgres (`pg`) |
-| Authentication | JSON Web Tokens (`jsonwebtoken`), bcrypt (`bcryptjs`) |
 | API documentation | OpenAPI 3, Swagger UI (`swagger-ui-express`) |
 | Local database setup | Docker Compose |
 
@@ -43,10 +42,10 @@ Compose starts the gateway, this service, and the other services. On its first s
 | Page | URL |
 |---|---|
 | API base URL (through the gateway) | http://localhost:8080/api |
-| This service directly (development only) | http://localhost:3001/api |
-| Swagger UI | http://localhost:3001/docs |
+| This service directly (development only, with `docker-compose.dev.yml`; send `X-User-Id` yourself) | http://localhost:3001/api |
+| Swagger UI (with `docker-compose.dev.yml`) | http://localhost:3001/docs |
 
-Set `JWT_SECRET` in the root `.env` file (copy `.env.example`) to a long random value. Without it, Compose uses a development-only default.
+Logins are checked by the API gateway (through the user service), which sends the user's id in `X-User-Id`. This service has no `JWT_SECRET`.
 
 To reset the data, run `docker compose down -v` and start again.
 
@@ -61,7 +60,7 @@ cp .env.example .env    # Windows PowerShell: Copy-Item .env.example .env
 npm run dev
 ```
 
-Edit `DATABASE_URL` and `JWT_SECRET` in `.env` first. The database named in `DATABASE_URL` is created if it does not exist.
+Edit `DATABASE_URL` in `.env` first. Without the gateway, send `X-User-Id: 1` yourself. The database named in `DATABASE_URL` is created if it does not exist.
 
 ## Sample Accounts
 
@@ -152,7 +151,7 @@ Errors use the same JSON shape as the other services: `{ "error": { "code", "mes
 
 | Header | Used for |
 |---|---|
-| `Authorization` | Sends the JWT on protected requests |
+| `X-User-Id` | The signed-in user's id, set by the API gateway on protected requests |
 | `Content-Type` | Marks request and response bodies as JSON |
 | `Location` | Gives the URL of a newly created resource |
 | `X-Total-Count` | Custom header with the number of trips, days, or places in a list |

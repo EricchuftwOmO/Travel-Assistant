@@ -14,9 +14,10 @@ info:
     kept in step with the trip's dates automatically. Each day holds an
     ordered list of places.
 
-    **Authentication:** log in through the user service to receive a JWT, then send it as
-    `Authorization: Bearer <token>`. Tokens expire after 1 hour. In this page,
-    click **Authorize** and paste the token (without the word `Bearer`).
+    **Authentication:** log in through the user service to receive a JWT and send it to the API gateway
+    as `Authorization: Bearer <token>`. The gateway asks the user service to check the token, then calls
+    this service with the user's id in `X-User-Id`. This service does not read tokens itself, so it must only
+    be reachable through the gateway. To try it directly on this page, click **Authorize** and enter a user id.
 
     **Privacy:** an account can only reach its own data. The account comes from
     the token, so user IDs never appear in a URL, and another user's trip
@@ -42,7 +43,7 @@ paths:
         trip can last at most 90 days.
       operationId: createTrip
       security:
-        - bearerAuth: []
+        - userIdHeader: []
       requestBody:
         required: true
         content:
@@ -89,7 +90,7 @@ paths:
         `status` are optional and can be combined.
       operationId: listTrips
       security:
-        - bearerAuth: []
+        - userIdHeader: []
       parameters:
         - name: search
           in: query
@@ -151,7 +152,7 @@ paths:
       summary: Get one of my trips
       operationId: getTrip
       security:
-        - bearerAuth: []
+        - userIdHeader: []
       responses:
         '200':
           description: The requested trip
@@ -188,7 +189,7 @@ paths:
         nothing changes.
       operationId: updateTrip
       security:
-        - bearerAuth: []
+        - userIdHeader: []
       requestBody:
         required: true
         content:
@@ -230,7 +231,7 @@ paths:
       summary: Delete one of my trips
       operationId: deleteTrip
       security:
-        - bearerAuth: []
+        - userIdHeader: []
       responses:
         '204':
           description: Trip deleted
@@ -269,7 +270,7 @@ paths:
         "404":
           $ref: "#/components/responses/TripNotFound"
       security:
-        - bearerAuth: []
+        - userIdHeader: []
     post:
       tags:
         - Trips
@@ -312,7 +313,7 @@ paths:
         "502":
           description: The flight service is unavailable
       security:
-        - bearerAuth: []
+        - userIdHeader: []
   /trips/{tripId}/flights/{tripFlightId}:
     delete:
       tags:
@@ -340,7 +341,7 @@ paths:
         "404":
           $ref: "#/components/responses/TripNotFound"
       security:
-        - bearerAuth: []
+        - userIdHeader: []
   /trips/{tripId}/itineraries:
     parameters:
       - $ref: '#/components/parameters/TripId'
@@ -349,7 +350,7 @@ paths:
       summary: List the days of one of my trips
       operationId: listDays
       security:
-        - bearerAuth: []
+        - userIdHeader: []
       responses:
         '200':
           description: Every day of the trip in order, with how many places each one has
@@ -393,7 +394,7 @@ paths:
       summary: Get one day's itinerary
       operationId: getDay
       security:
-        - bearerAuth: []
+        - userIdHeader: []
       responses:
         '200':
           description: The day with its places in visiting order
@@ -444,7 +445,7 @@ paths:
         the place at the end of the day. The same place may appear more than once.
       operationId: addItem
       security:
-        - bearerAuth: []
+        - userIdHeader: []
       requestBody:
         required: true
         content:
@@ -502,7 +503,7 @@ paths:
       description: Empties the day. The day itself remains, because the trip's dates define its days.
       operationId: clearItems
       security:
-        - bearerAuth: []
+        - userIdHeader: []
       responses:
         '204':
           description: The day is now empty
@@ -526,7 +527,7 @@ paths:
         order. The first ID gets position 1.
       operationId: reorderItems
       security:
-        - bearerAuth: []
+        - userIdHeader: []
       requestBody:
         required: true
         content:
@@ -592,7 +593,7 @@ paths:
       summary: Get one itinerary item
       operationId: getItem
       security:
-        - bearerAuth: []
+        - userIdHeader: []
       responses:
         '200':
           description: The requested item
@@ -623,7 +624,7 @@ paths:
       description: Every place after the removed one moves up by one, so positions stay 1, 2, 3, and so on.
       operationId: removeItem
       security:
-        - bearerAuth: []
+        - userIdHeader: []
       responses:
         '204':
           description: Place removed
@@ -645,7 +646,7 @@ paths:
         reserved for a future Google Places integration.
       operationId: listPlaces
       security:
-        - bearerAuth: []
+        - userIdHeader: []
       parameters:
         - name: city
           in: query
@@ -701,7 +702,7 @@ paths:
               example:
                 googlePlaces: true
       security:
-        - bearerAuth: []
+        - userIdHeader: []
   /places/nearby:
     get:
       tags: [Places]
@@ -733,7 +734,7 @@ paths:
         '503':
           description: No GOOGLE_PLACES_API_KEY on the server, or the Google quota is used up
       security:
-        - bearerAuth: []
+        - userIdHeader: []
   /places/locate:
     get:
       tags: [Places]
@@ -758,13 +759,14 @@ paths:
         '503':
           description: No GOOGLE_PLACES_API_KEY on the server
       security:
-        - bearerAuth: []
+        - userIdHeader: []
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+    userIdHeader:
+      type: apiKey
+      in: header
+      name: X-User-Id
+      description: The signed-in user's id. The API gateway sets it after the user service accepts the token.
   parameters:
     TripId:
       name: tripId

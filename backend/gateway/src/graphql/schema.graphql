@@ -1,0 +1,421 @@
+"""
+Travel Assistant GraphQL API: the frontend's single entry point, at /graphql and /api/graphql.
+Accounts and profiles come from the User Service, the rest from the other services' REST endpoints.
+Flights, hotels, car rentals and activities are public. Trips, itineraries, places, advice and profile
+changes need a bearer token (the user service says who the caller is; the client never sends a user id).
+The catalog lists are nullable on purpose: if one service is down, that field is null with an error
+and the rest of the query still returns data.
+"""
+type Query {
+  "The signed-in user (Authorization: Bearer <token>), or null without a valid token."
+  me: User
+  "Language and timezone settings (Language & Timezone tab), or null when signed out."
+  myLanguageSettings: LanguageSettings
+  "Travel preferences (Travel Preferences tab), or null when signed out."
+  myTravelPreferences: TravelPreferences
+
+  flights(
+    origin: String
+    destination: String
+    "YYYY-MM-DD"
+    departDate: String
+    maxPrice: Float
+    sort: FlightSort
+    order: SortOrder
+    limit: Int
+    offset: Int
+  ): [Flight!]
+  flight(id: ID!): Flight
+
+  hotels(
+    city: String
+    country: String
+    minStars: Int
+    maxPrice: Float
+    available: Boolean
+    sort: HotelSort
+    order: SortOrder
+    limit: Int
+    offset: Int
+  ): [Hotel!]
+  hotel(id: ID!): Hotel
+
+  carRentals(
+    city: String
+    carType: CarType
+    minSeats: Int
+    maxPrice: Float
+    available: Boolean
+    sort: CarRentalSort
+    order: SortOrder
+    limit: Int
+    offset: Int
+  ): [CarRental!]
+  carRental(id: ID!): CarRental
+
+  activities(
+    city: String
+    category: ActivityCategory
+    maxPrice: Float
+    "Part of the name, case-insensitive"
+    q: String
+    sort: ActivitySort
+    order: SortOrder
+    limit: Int
+    offset: Int
+  ): [Activity!]
+  activity(id: ID!): Activity
+
+  "The signed-in user's trips (login required)"
+  myTrips(search: String, status: TripStatus): [Trip!]!
+  "One of the signed-in user's trips (login required); null if it is not theirs or does not exist"
+  trip(id: ID!): Trip
+  "One day of a trip with its places in visiting order (login required); null if there is no such day"
+  itineraryDay(tripId: ID!, dayNumber: Int!): ItineraryDay
+
+  "The sample place catalog (login required)"
+  places(city: String, category: PlaceCategory): [Place!]!
+  "Whether Google Places can be used (login required). If not, use the sample catalog."
+  placesConfig: PlacesConfig!
+  "Places from Google around a point (login required). Needs a Google Places key (else error)."
+  nearbyPlaces(lat: Float!, lng: Float!, radius: Int, category: PlaceCategory, language: String): [NearbyPlace!]!
+  "Where a destination name such as Tokyo is, to centre a map (login required); null if Google finds nothing"
+  locatePlace(query: String!, language: String): LocatedPlace
+
+  "The signed-in user's saved advice, newest first (login required)"
+  myAdvice(tripId: ID, topic: AdviceTopic, limit: Int): [Advice!]!
+}
+
+enum SortOrder { asc desc }
+
+type Flight {
+  id: ID!
+  airline: String!
+  flightNumber: String!
+  origin: String!
+  destination: String!
+  departAt: String!
+  arriveAt: String!
+  price: Float!
+  currency: String!
+  seatsAvailable: Int!
+}
+enum FlightSort { price departAt arriveAt }
+
+type Hotel {
+  id: ID!
+  name: String!
+  city: String!
+  country: String!
+  address: String
+  stars: Int!
+  pricePerNight: Float!
+  currency: String!
+  rating: Float
+  available: Boolean!
+}
+enum HotelSort { pricePerNight stars rating }
+
+enum CarType { economy compact suv van luxury }
+enum Transmission { automatic manual }
+
+type CarRental {
+  id: ID!
+  company: String!
+  carType: CarType!
+  model: String!
+  pickupCity: String!
+  seats: Int!
+  transmission: Transmission!
+  pricePerDay: Float!
+  currency: String!
+  available: Boolean!
+}
+enum CarRentalSort { pricePerDay seats }
+
+enum ActivityCategory { sightseeing food outdoors museum nightlife shopping }
+
+type Activity {
+  id: ID!
+  name: String!
+  city: String!
+  category: ActivityCategory!
+  description: String
+  price: Float!
+  currency: String!
+  durationMinutes: Int
+  rating: Float
+}
+enum ActivitySort { name price rating durationMinutes }
+
+enum TripStatus { upcoming past }
+
+type Trip {
+  id: ID!
+  ownerId: ID!
+  title: String!
+  destination: String!
+  startDate: String!
+  endDate: String!
+  createdAt: String!
+
+  "Flights attached to the trip"
+  flights: [TripFlight!]!
+  "One itinerary day per date of the trip (with placeCount; items are loaded per day)"
+  itineraries: [ItineraryDay!]!
+
+  "Hotels in the trip's destination city (Hotel Service)"
+  hotels(minStars: Int, maxPrice: Float, available: Boolean, limit: Int): [Hotel!]
+  "Things to do in the trip's destination city (Activity Service)"
+  activities(category: ActivityCategory, maxPrice: Float, limit: Int): [Activity!]
+  "Rental cars picked up in the trip's destination city (Car Rental Service)"
+  carRentals(carType: CarType, maxPrice: Float, available: Boolean, limit: Int): [CarRental!]
+}
+
+# ---------- Accounts (User Service) ----------
+
+"A calendar date without a time, e.g. 2000-05-10 (YYYY-MM-DD)."
+scalar Date
+
+enum Gender { MALE FEMALE NON_BINARY OTHER PREFER_NOT_TO_SAY }
+enum BudgetLevel { BUDGET MODERATE LUXURY }
+enum TravelStyle { ADVENTURE NATURE CULTURE FOOD RELAXATION }
+
+"A Travel Assistant account and profile. The password is never returned."
+type User {
+  id: ID!
+  firstName: String!
+  lastName: String!
+  "First and last name together"
+  name: String!
+  gender: Gender
+  dateOfBirth: Date
+  phone: String
+  country: String
+  email: String!
+  createdAt: String!
+  languageSettings: LanguageSettings!
+  travelPreferences: TravelPreferences!
+}
+
+type LanguageSettings {
+  "e.g. en, zh-TW"
+  language: String!
+  "An IANA time zone, e.g. America/Los_Angeles"
+  timezone: String!
+}
+
+type TravelPreferences {
+  budgetLevel: BudgetLevel
+  travelStyles: [TravelStyle!]!
+}
+
+"A login token (JWT, valid for 1 hour) and the account it belongs to."
+type AuthPayload {
+  user: User!
+  token: String!
+}
+
+"Give either name (split into first and last name) or firstName and lastName."
+input RegisterInput {
+  name: String
+  firstName: String
+  lastName: String
+  email: String!
+  "At least 8 characters."
+  password: String!
+}
+
+input ProfileInput {
+  name: String!
+  email: String!
+}
+
+"Omitted fields stay as they are; null clears an optional one."
+input UpdateBasicInfoInput {
+  firstName: String
+  lastName: String
+  gender: Gender
+  dateOfBirth: Date
+  phone: String
+  country: String
+}
+
+input UpdateLanguageSettingsInput {
+  language: String
+  timezone: String
+}
+
+input UpdateTravelPreferencesInput {
+  budgetLevel: BudgetLevel
+  travelStyles: [TravelStyle!]
+}
+
+type Mutation {
+  register(input: RegisterInput!): AuthPayload!
+  login(email: String!, password: String!): AuthPayload!
+  "Sign in with the Google ID token from Google Sign-In. Creates the account on first use."
+  loginWithGoogle(credential: String!): AuthPayload!
+  "Save the Basic Information tab."
+  updateBasicInfo(input: UpdateBasicInfoInput!): User!
+  "Save the Language & Timezone tab."
+  updateLanguageSettings(input: UpdateLanguageSettingsInput!): LanguageSettings!
+  "Save the Travel Preferences tab."
+  updateTravelPreferences(input: UpdateTravelPreferencesInput!): TravelPreferences!
+  "Replaces the signed-in user's name and email (older, simpler update)."
+  updateMe(input: ProfileInput!): User!
+  "Deletes the signed-in user's trips and then the account."
+  deleteMe: Boolean!
+}
+
+# ---------- Trips, itineraries, places (Trip Service) ----------
+
+"A flight attached to a trip: a copy of the Flight Service's details, so it stays as booked."
+type TripFlight {
+  "The id of this attachment (use it to detach the flight)"
+  id: ID!
+  tripId: ID!
+  "The id of the flight in the Flight Service"
+  flightId: ID!
+  airline: String!
+  flightNumber: String!
+  origin: String!
+  destination: String!
+  departAt: String!
+  arriveAt: String!
+  price: Float!
+  currency: String!
+  createdAt: String!
+}
+
+"One travel day of a trip."
+type ItineraryDay {
+  id: ID!
+  tripId: ID!
+  dayNumber: Int!
+  "YYYY-MM-DD"
+  date: String!
+  "Number of places planned on this day"
+  placeCount: Int!
+  "The places in visiting order"
+  items: [ItineraryItem!]!
+}
+
+type ItineraryItem {
+  id: ID!
+  "1-based place in the day's order"
+  position: Int!
+  place: Place!
+}
+
+"A place in the Trip Service's own table: a sample catalog entry, or a Google place saved when first added."
+type Place {
+  id: ID!
+  googlePlaceId: String
+  name: String!
+  city: String
+  category: String
+  address: String
+  lat: Float
+  lng: Float
+}
+
+enum PlaceCategory { attraction food museum nature shopping }
+
+type PlacesConfig {
+  googlePlaces: Boolean!
+}
+
+"A Google place near a point. Add it to a day with googlePlaceId."
+type NearbyPlace {
+  googlePlaceId: String!
+  name: String!
+  address: String
+  lat: Float
+  lng: Float
+  category: String
+  "e.g. Ramen restaurant"
+  type: String
+  rating: Float
+  ratingCount: Int
+}
+
+type Viewport {
+  north: Float!
+  east: Float!
+  south: Float!
+  west: Float!
+}
+
+type LocatedPlace {
+  name: String!
+  lat: Float!
+  lng: Float!
+  viewport: Viewport
+}
+
+"The trip's fields. startDate and endDate are YYYY-MM-DD; a trip lasts at most 90 days."
+input TripInput {
+  title: String!
+  destination: String!
+  startDate: String!
+  endDate: String!
+}
+
+input CreateTripInput {
+  title: String!
+  destination: String!
+  startDate: String!
+  endDate: String!
+  "Start the trip with this flight from the Flight Service (optional)"
+  flightId: ID
+}
+
+"Give either placeId (sample catalog) or googlePlaceId (Google Places), not both."
+input NewItineraryItemInput {
+  placeId: ID
+  googlePlaceId: String
+  "Insert here (1-based); omitted = at the end"
+  position: Int
+  "Language for a Google place's name, e.g. en or zh-TW"
+  language: String
+}
+
+# ---------- AI advice (LLM Service) ----------
+
+enum AdviceTopic { general packing food safety budget itinerary }
+enum AdviceSource { llm stub user }
+
+type Advice {
+  id: ID!
+  tripId: ID
+  topic: AdviceTopic!
+  prompt: String!
+  "The answer"
+  content: String!
+  model: String
+  "llm = model answer, stub = placeholder (no LLM key), user = supplied by the caller"
+  source: AdviceSource
+  createdAt: String!
+}
+
+extend type Mutation {
+  "Create a trip with one itinerary day per date, optionally starting from a flight"
+  createTrip(input: CreateTripInput!): Trip!
+  "Change a trip. Shortening it is refused (CONFLICT) while a day that would go still has places."
+  updateTrip(id: ID!, input: TripInput!): Trip!
+  "Delete a trip with its days and flights"
+  deleteTrip(id: ID!): Boolean!
+  "Attach a flight from the Flight Service to a trip (CONFLICT if it is already on it)"
+  attachFlight(tripId: ID!, flightId: ID!): TripFlight!
+  "Remove an attached flight. tripFlightId is TripFlight.id, not the Flight Service's id."
+  detachFlight(tripId: ID!, tripFlightId: ID!): Boolean!
+
+  addItineraryItem(tripId: ID!, dayNumber: Int!, input: NewItineraryItemInput!): ItineraryItem!
+  removeItineraryItem(tripId: ID!, dayNumber: Int!, itemId: ID!): Boolean!
+  "itemIds must list every item of the day exactly once, in the new order. Returns the day."
+  reorderItineraryItems(tripId: ID!, dayNumber: Int!, itemIds: [ID!]!): ItineraryDay!
+
+  "Ask the AI assistant; the answer is saved and returned. The advice belongs to the signed-in user."
+  askAdvice(tripId: ID, topic: AdviceTopic, prompt: String!): Advice!
+}
