@@ -75,7 +75,7 @@ Errors: `{ "error": { "code", "message", "details" } }`. A `400` lists every bad
 ## LLM service
 
 - `POST /api/advice` with a `prompt` and no `content` asks Groq for the answer (`GROQ_API_KEY`, `LLM_MODEL`).
-  Without a key it saves a placeholder (`source: "stub"`). A model failure returns `502 LLM_UNAVAILABLE`.
+  Without a key it answers with a travel joke (`source: "stub"`). A model failure returns `502 LLM_UNAVAILABLE`.
 - `POST /api/advice/recommendations` (`src/recommend.js`) gathers flights, hotels, activities and optionally cars
   from the other services, picks a package, adds up the cost in code, and saves the summary.
 

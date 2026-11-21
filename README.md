@@ -31,7 +31,7 @@ Stop with `docker compose down` (keeps data) or `docker compose down -v` (back t
 Ports and environment variables: [`deploy/DEPLOY.md`](deploy/DEPLOY.md).
 
 **Optional:** `cp .env.example .env` and set `GROQ_API_KEY` for real model answers. Without it the LLM service
-saves placeholder answers (`"source": "stub"`) and picks with simple rules. `.env` is git-ignored.
+answers questions with travel jokes (`"source": "stub"`) and picks with simple rules. `.env` is git-ignored.
 
 **Optional:** set `GOOGLE_PLACES_API_KEY` (a Google Cloud key with **Places API (New)** and **Maps JavaScript API**
 enabled) to pick places on a Google map in Add place. Then rebuild: `docker compose up --build -d trip-service frontend`.
