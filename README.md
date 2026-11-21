@@ -6,7 +6,7 @@ TCSS 559 Autumn 2026. A travel-planning app: a React frontend and small services
 - **User service**: accounts, login, Sign in with Google and profiles, as a **REST** API. The only service that handles tokens.
 - **Trip service**: trips, flights attached to trips, day-by-day itineraries, places.
 - **Flight, hotel, car-rental and activity services**: CRUD, filters, PostgreSQL, Redis cache.
-- **LLM service** (the AI part): saves travel advice and builds trip recommendations.
+- **LLM service** (the AI part): an AI assistant that can search flights (tool calling) and pre-trip notes for a trip (a fixed chain).
 - **API gateway**: single entry point on port 8080. Serves the **GraphQL** API the frontend uses, asks the user service to check login tokens, and routes REST requests.
 
 ## Run
@@ -79,11 +79,10 @@ curl -X POST http://localhost:8080/api/graphql -H "Authorization: Bearer $TOKEN"
 
 curl "http://localhost:8080/api/hotels?city=Tokyo&minStars=4&maxPrice=200"
 
-# recommendation: the LLM service calls the other services, adds up the cost in code, and saves the result
+# pre-trip notes: the LLM service reads your profile and the trip, asks the model once, and checks its JSON
 TOKEN=<token from login>
-curl -X POST http://localhost:8080/api/advice/recommendations -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"user_id":"u1","origin":"SEA","destination":"Tokyo","nights":5,"travelers":1,"budget":2500}'
+curl -X POST http://localhost:8080/api/advice/trip-notes -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d '{"trip_id":1}'
 ```
 
 ## Test

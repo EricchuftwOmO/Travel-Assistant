@@ -108,8 +108,12 @@ Errors: `{ "error": { "code", "message", "details" } }`. A `400` lists every bad
 
 - `POST /api/advice` with a `prompt` and no `content` asks Groq for the answer (`GROQ_API_KEY`, `LLM_MODEL`).
   Without a key it answers with a travel joke (`source: "stub"`). A model failure returns `502 LLM_UNAVAILABLE`.
-- `POST /api/advice/recommendations` (`src/recommend.js`) gathers flights, hotels, activities and optionally cars
-  from the other services, picks a package, adds up the cost in code, and saves the summary.
+- `POST /api/advice/trip-notes` (`src/notes.js`, GraphQL `tripNotes`) is a **fixed chain** for pre-trip notes. The
+  code calls the user service (`/api/users/me`, home country) and the trip service (trip, flights, each day's
+  places) in a set order, checks the plan itself (places before the flight lands, empty days), asks Groq once with
+  **no tools** for JSON notes, then checks that JSON (categories, days and item ids must match the trip) and keeps
+  its own findings. Without a key, or when the model fails or answers badly, the notes come from rules over the
+  same data (`source: "stub"`). Nothing is saved.
 
 ## Changing a service
 

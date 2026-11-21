@@ -127,9 +127,14 @@ before(async () => {
     });
     const llmUrl = await listen(async (req, res) => {
         const body = await readBody(req);
-        seen.push({ service: 'llm', method: req.method, url: req.url, authorization: req.headers.authorization, body });
+        seen.push({ service: 'llm', method: req.method, url: req.url, authorization: req.headers.authorization, userId: req.headers['x-user-id'], body });
         const { pathname } = new URL(req.url, 'http://x');
         if (req.method === 'GET' && pathname === '/api/advice') return json(res, 200, { count: 1, total: 1, data: [ADVICE] });
+        if (req.method === 'POST' && pathname === '/api/advice/trip-notes') {
+            if (body.trip_id !== 1) return json(res, 404, { error: { code: 'NOT_FOUND', message: `Trip ${body.trip_id} not found` } });
+            return json(res, 200, { trip_id: 1, destination: 'Tokyo', start_date: '2027-01-28', end_date: '2027-02-03', source: 'stub', model: 'stub',
+                generated_at: '2026-11-21T00:00:00.000Z', notes: [{ category: 'itinerary', priority: 'high', title: 'Too early', detail: 'Move it.', day: 1, item_id: 9 }] });
+        }
         if (req.method === 'POST' && pathname === '/api/advice') {
             return json(res, 201, { ...ADVICE, id: 2, ...body, content: 'Pack layers.', source: 'stub' });
         }
@@ -506,6 +511,24 @@ test('places: catalog, config, nearby and locate (null when Google finds nothing
     assert.equal(nearby.searchParams.get('category'), 'food');
 
     const anon = await gql('{ places { id } }', { auth: false });
+    assert.equal(anon.errors[0].extensions.code, 'UNAUTHENTICATED');
+});
+
+test('tripNotes: the LLM service gets the trip id, the user id from the user service and the caller token', async () => {
+    seen.length = 0;
+    const { data, errors } = await gql('{ tripNotes(tripId: 1) { tripId destination startDate source generatedAt notes { category priority title day itemId } } }');
+    assert.equal(errors, undefined);
+    assert.deepEqual(data.tripNotes.notes, [{ category: 'itinerary', priority: 'high', title: 'Too early', day: 1, itemId: '9' }]);
+    assert.equal(data.tripNotes.tripId, '1');
+    assert.equal(data.tripNotes.startDate, '2027-01-28');
+    const call = seen.find((r) => r.service === 'llm');
+    assert.deepEqual(call.body, { trip_id: 1 });
+    assert.equal(call.userId, '7');
+    assert.equal(call.authorization, `Bearer ${token}`);
+
+    const missing = await gql('{ tripNotes(tripId: 99) { tripId } }');
+    assert.equal(missing.errors[0].extensions.code, 'NOT_FOUND');
+    const anon = await gql('{ tripNotes(tripId: 1) { tripId } }', { auth: false });
     assert.equal(anon.errors[0].extensions.code, 'UNAUTHENTICATED');
 });
 

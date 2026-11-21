@@ -84,6 +84,11 @@ type Query {
 
   "The signed-in user's saved advice, newest first (login required)"
   myAdvice(tripId: ID, topic: AdviceTopic, limit: Int): [Advice!]!
+  """
+  Pre-trip notes for one of your trips. A fixed chain: the LLM service reads your profile (User Service) and the
+  trip (Trip Service), checks the plan, asks the model once (no tools) for JSON notes and checks them. Nothing is saved.
+  """
+  tripNotes(tripId: ID!): TripNotes!
 }
 
 enum SortOrder { asc desc }
@@ -417,6 +422,32 @@ type AdviceStep {
   tool: String!
   summary: String!
   count: Int
+}
+
+enum NoteCategory { entry culture weather money transport electricity health safety itinerary }
+enum NotePriority { high medium low }
+
+"One pre-trip note. day and itemId, when set, point at this trip's own days and places."
+type TripNote {
+  category: NoteCategory!
+  priority: NotePriority!
+  title: String!
+  detail: String!
+  day: Int
+  itemId: ID
+}
+
+type TripNotes {
+  tripId: ID!
+  destination: String!
+  startDate: String
+  endDate: String
+  "Most important first"
+  notes: [TripNote!]!
+  "llm = written by the model and checked by the code, stub = rules only (no key, or the model failed)"
+  source: AdviceSource!
+  model: String
+  generatedAt: String!
 }
 
 extend type Mutation {

@@ -292,6 +292,20 @@ const ADVICE_FIELDS = `id tripId topic prompt content source createdAt
   steps { tool summary count }
   flights { ${FLIGHT_FIELDS} }`;
 
+// Pre-trip notes (a fixed AI chain in the LLM service). Read-only: nothing is saved.
+export const tripNotesApi = {
+  get: (tripId) =>
+    gql(
+      `query TripNotes($tripId: ID!) {
+        tripNotes(tripId: $tripId) {
+          tripId destination source generatedAt
+          notes { category priority title detail day itemId }
+        }
+      }`,
+      { tripId }
+    ).then((d) => d.tripNotes),
+};
+
 export const adviceApi = {
   recent: (tripId, limit = 5) =>
     gql(`query Advice($tripId: ID, $limit: Int) { myAdvice(tripId: $tripId, limit: $limit) { ${ADVICE_FIELDS} } }`, {

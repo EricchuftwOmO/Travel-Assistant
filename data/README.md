@@ -12,8 +12,7 @@ service also loads by itself on first start.
 | `activity_db.sql` | Activity | 8 activities; two free |
 | `llm_db.sql` | LLM | 2 advice records |
 
-Useful edge cases: `city=Atlantis` returns `count: 0`, `carType=boat` returns 400, and a destination with no
-data makes the recommendation endpoint return 404.
+Useful edge cases: `city=Atlantis` returns `count: 0` and `carType=boat` returns 400.
 
 ## Load by hand
 

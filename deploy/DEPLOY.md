@@ -43,7 +43,7 @@ No secret is stored in an image, `docker-compose.yml` or git. Real values go in 
 | `CACHE_TTL_SECONDS` | same | 60 | cache lifetime |
 | `GROQ_API_KEY` | llm-service | empty | model key; empty = placeholder answers |
 | `LLM_MODEL` | llm-service | `openai/gpt-oss-20b` | Groq model |
-| `FLIGHT_SERVICE_URL`, `HOTEL_SERVICE_URL`, `ACTIVITY_SERVICE_URL`, `CAR_RENTAL_SERVICE_URL` | llm-service | Compose names | services the recommendation endpoint calls |
+| `FLIGHT_SERVICE_URL`, `USER_SERVICE_URL`, `TRIP_SERVICE_URL` | llm-service | Compose names | flight service for the assistant's flight search; user and trip services for pre-trip notes |
 | `*_SERVICE_URL`, `CORS_ORIGINS`, `UPSTREAM_TIMEOUT_MS`, `LLM_TIMEOUT_MS` | gateway | see `backend/gateway/.env.example` | routing, CORS, timeouts |
 
 ## Cloud deployment (Render, planned for Phase III)

@@ -250,41 +250,64 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
-  /api/advice/recommendations:
+  /api/advice/trip-notes:
     post:
       tags:
         - Advice
-      summary: Create a recommendation summary
-      operationId: createRecommendation
-      description: The LLM service calls the Flight, Hotel and Activity services (and the Car Rental service when
-        include_car is true) directly, lets the language model choose among the results (or picks with plain
-        rules when no GROQ_API_KEY is set or the model's choice is unusable), adds up the cost in code, checks
-        it against the budget, and saves the summary as advice. Nothing is saved if a service or the model
-        fails.
+      summary: Pre-trip notes for one of the caller's trips (fixed AI chain)
+      operationId: createTripNotes
+      description: 'A fixed chain: the code calls the User service (GET /api/users/me, for the home country) and
+        the Trip service (the trip, its flights and every day''s places) in a set order, checks the plan itself
+        (places planned before the flight lands, empty days), then asks the language model once, with no tools,
+        for notes as JSON. The code checks that JSON (categories, days and item ids must match the trip) and
+        always keeps its own findings. Without GROQ_API_KEY, or when the model fails or answers badly, the notes
+        come from rules over the same data (source "stub"). Nothing is saved. Needs X-User-Id (set by the gateway)
+        and the caller''s Authorization header (passed on to the User service).'
+      parameters:
+        - name: X-User-Id
+          in: header
+          required: true
+          description: The signed-in user's id, set by the API gateway
+          schema:
+            type: integer
+            example: 3
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RecommendationRequest"
+              type: object
+              required:
+                - trip_id
+              properties:
+                trip_id:
+                  type: integer
+                  minimum: 1
+                  example: 7
       responses:
-        "201":
-          description: Recommendation saved
+        "200":
+          description: The notes, most important first
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Recommendation"
+                $ref: "#/components/schemas/TripNotes"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          description: No signed-in user (UNAUTHORIZED)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
-          description: No flights, hotels or activities found for the destination (NOT_FOUND)
+          description: The trip does not exist or is not the caller's (NOT_FOUND)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "502":
-          description: LLM_UNAVAILABLE (the model failed) or SERVICE_UNAVAILABLE (a search service is down). Nothing is
-            saved.
+          description: The Trip service is unavailable (SERVICE_UNAVAILABLE). A model failure is not an error; it
+            gives stub notes.
           content:
             application/json:
               schema:
@@ -443,125 +466,87 @@ components:
             message:
               type: string
             details: {}
-    RecommendationRequest:
+    TripNote:
       type: object
+      description: One note. This is the JSON the model must return for each note; the code checks every field.
       required:
-        - user_id
-        - destination
-        - budget
-      additionalProperties: false
+        - category
+        - priority
+        - title
+        - detail
       properties:
-        user_id:
+        category:
           type: string
-          example: u1
+          enum:
+            - entry
+            - culture
+            - weather
+            - money
+            - transport
+            - electricity
+            - health
+            - safety
+            - itinerary
+          example: culture
+        priority:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+          example: medium
+        title:
+          type: string
+          maxLength: 80
+          example: Tipping is not expected
+        detail:
+          type: string
+          maxLength: 400
+          example: Restaurants add a 10% service charge; there is no need to tip on top.
+        day:
+          type:
+            - integer
+            - "null"
+          description: Day of the trip the note is about (must exist in the trip)
+          example: null
+        item_id:
+          type:
+            - integer
+            - "null"
+          description: Itinerary item the note is about (must be one of the trip's)
+          example: null
+    TripNotes:
+      type: object
+      properties:
         trip_id:
           type: integer
-          minimum: 1
-          example: 1
-        origin:
-          type: string
-          description: Origin airport code
-          example: SEA
+          example: 7
         destination:
           type: string
-          example: Tokyo
-        nights:
-          type: integer
-          minimum: 1
-          example: 5
-        travelers:
-          type: integer
-          minimum: 1
-          default: 1
-          example: 1
-        budget:
-          type: number
-          minimum: 0
-          example: 2500
-        currency:
+          example: Taipei
+        start_date:
           type: string
-          default: USD
-          example: USD
-        preferences:
+          example: "2027-01-31"
+        end_date:
           type: string
-          example: food and museums
-        include_car:
-          type: boolean
-          default: false
-          description: Also pick the cheapest rental car in the destination city (charged per day for the whole trip)
-          example: false
-    Recommendation:
-      type: object
-      properties:
-        id:
-          type: integer
-          example: 5
-        summary:
-          type: string
-          example: Fly ANA NH 177 to Tokyo, stay at Hotel Gracery Shinjuku for 5 nights...
-        selection:
-          type: object
-          properties:
-            flight_id:
-              type: integer
-              example: 2
-            hotel_id:
-              type: integer
-              example: 1
-            activity_ids:
-              type: array
-              items:
-                type: integer
-              example:
-                - 2
-                - 3
-                - 1
-            car_rental_id:
-              type:
-                - integer
-                - "null"
-              example: null
-        breakdown:
-          type: object
-          description: Computed in code by the LLM service, never by the model
-          properties:
-            flights:
-              type: number
-              example: 912
-            hotel:
-              type: number
-              example: 825
-            activities:
-              type: number
-              example: 97
-            car_rental:
-              type: number
-              example: 0
-        total:
-          type: number
-          example: 1834
-        budget:
-          type: number
-          example: 2500
-        within_budget:
-          type: boolean
-          example: true
+          example: "2027-02-06"
+        notes:
+          type: array
+          items:
+            $ref: "#/components/schemas/TripNote"
         source:
           type: string
           enum:
             - llm
             - stub
-          description: llm = the model chose the items, stub = chosen by plain rules
+          description: llm = written by the model and checked by the code, stub = rules only
           example: stub
         model:
           type: string
           example: stub
-        currency:
+        generated_at:
           type: string
-          example: USD
-        remaining:
-          type: number
-          example: 666
+          format: date-time
   responses:
     BadRequest:
       description: Invalid or missing field or query parameter (BAD_REQUEST). "details" lists every invalid field.

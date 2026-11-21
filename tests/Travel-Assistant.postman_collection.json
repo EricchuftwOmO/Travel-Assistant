@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Travel Assistant API",
-    "description": "Runs against the API gateway (docker compose up --build). Covers the gateway's GraphQL API (accounts and profiles, backed by the REST user service), CRUD, filtering, validation errors, trips with flights, and the recommendation summary (business logic). Every request has tests; records it creates it deletes.",
+    "description": "Runs against the API gateway (docker compose up --build). Covers the gateway's GraphQL API (accounts and profiles, backed by the REST user service), CRUD, filtering, validation errors, trips with flights, pre-trip notes (a fixed AI chain) and the AI assistant (a tool-calling chain). Every request has tests; records it creates it deletes.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -1899,25 +1899,31 @@
       ]
     },
     {
-      "name": "4. Recommendation summary (business logic)",
-      "description": "POST /api/advice/recommendations: the LLM service calls the Flight, Hotel and Activity services, picks a package, adds up the cost in code and saves the summary.",
+      "name": "4. Pre-trip notes (fixed AI chain)",
+      "description": "POST /api/advice/trip-notes and GraphQL tripNotes: the LLM service reads the traveler from the User service and the trip from the Trip service in a set order, checks the plan, asks the model once with no tools for JSON notes, and checks that JSON. Without a key (or if the model fails) the notes come from rules (source \"stub\"). Uses the seeded Japan Trip (trip 1, alice). Nothing is saved.",
       "item": [
         {
-          "name": "Recommend a 5-night Tokyo trip within $2500",
+          "name": "Notes for the Japan Trip (REST)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
-                  "const body = pm.response.json();",
-                  "pm.test('Location header points at the saved advice', () => pm.expect(pm.response.headers.get('Location')).to.eql(`/api/advice/${body.id}`));",
-                  "pm.test('total equals the sum of the breakdown (computed in code)', () => pm.expect(body.total).to.be.closeTo(body.breakdown.flights + body.breakdown.hotel + body.breakdown.activities, 0.01));",
-                  "pm.test('within budget and remaining is budget minus total', () => { pm.expect(body.within_budget).to.eql(true); pm.expect(body.remaining).to.be.closeTo(body.budget - body.total, 0.01); });",
-                  "pm.test('selection uses real ids', () => { pm.expect(body.selection.flight_id).to.be.a('number'); pm.expect(body.selection.hotel_id).to.be.a('number'); pm.expect(body.selection.activity_ids).to.be.an('array').that.is.not.empty; });",
-                  "pm.test('summary is saved and mentions the total', () => pm.expect(body.summary).to.include('Total $'));",
-                  "pm.collectionVariables.set('recoId', body.id);"
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const n = pm.response.json();",
+                  "pm.test('there are notes', () => pm.expect(n.notes).to.be.an('array').that.is.not.empty);",
+                  "pm.test('every note has a known category and priority, a title and a detail', () => n.notes.forEach((x) => {",
+                  "  pm.expect(['entry','culture','weather','money','transport','electricity','health','safety','itinerary']).to.include(x.category);",
+                  "  pm.expect(['high','medium','low']).to.include(x.priority);",
+                  "  pm.expect(x.title).to.be.a('string').and.not.empty; pm.expect(x.detail).to.be.a('string').and.not.empty;",
+                  "}));",
+                  "pm.test('a day, when given, is one of the 7 days of the trip', () => n.notes.forEach((x) => { if (x.day !== null) pm.expect(x.day).to.be.within(1, 7); }));",
+                  "pm.test('most important first', () => { const r = { high: 0, medium: 1, low: 2 }; n.notes.forEach((x, i) => { if (i) pm.expect(r[x.priority]).to.be.at.least(r[n.notes[i - 1].priority]); }); });",
+                  "pm.test('always reminds the traveler to check entry rules (kept by the code)', () => pm.expect(n.notes.some((x) => x.category === 'entry')).to.eql(true));",
+                  "pm.test('source is llm or stub', () => pm.expect(['llm','stub']).to.include(n.source));",
+                  "pm.test('about the right trip', () => { pm.expect(n.trip_id).to.eql(1); pm.expect(n.destination).to.eql('Tokyo'); });",
+                  "pm.test('item ids, when given, are real places on that day', () => n.notes.forEach((x) => { if (x.item_id !== null) pm.expect(x.day).to.be.a('number'); }));"
                 ]
               }
             }
@@ -1932,7 +1938,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"user_id\": \"postman\",\n  \"trip_id\": 1,\n  \"origin\": \"SEA\",\n  \"destination\": \"Tokyo\",\n  \"nights\": 5,\n  \"travelers\": 1,\n  \"budget\": 2500,\n  \"preferences\": \"food and museums\"\n}",
+              "raw": "{\n  \"trip_id\": 1\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1940,20 +1946,20 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/advice/recommendations",
+              "raw": "{{baseUrl}}/api/advice/trip-notes",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "advice",
-                "recommendations"
+                "trip-notes"
               ]
             }
           }
         },
         {
-          "name": "The recommendation was saved as advice",
+          "name": "Notes for the Japan Trip (GraphQL tripNotes, what the Trip page uses)",
           "event": [
             {
               "listen": "test",
@@ -1962,40 +1968,18 @@
                 "exec": [
                   "pm.test('Status is 200', () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
-                  "pm.test('topic itinerary, owned by postman', () => { pm.expect(body.topic).to.eql('itinerary'); pm.expect(body.user_id).to.eql('postman'); });"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/advice/{{recoId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "advice",
-                "{{recoId}}"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Tight budget: package is reported as over budget, not hidden",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
-                  "const body = pm.response.json();",
-                  "pm.test('over budget is reported honestly', () => { pm.expect(body.within_budget).to.eql(false); pm.expect(body.remaining).to.be.below(0); });",
-                  "pm.test('cheapest hotel was used', () => pm.expect(body.breakdown.hotel).to.eql(240));",
-                  "pm.collectionVariables.set('recoId2', body.id);"
+                  "pm.test('no errors', () => pm.expect(body.errors).to.be.undefined);",
+                  "const n = body.data.tripNotes;",
+                  "pm.test('there are notes', () => pm.expect(n.notes).to.be.an('array').that.is.not.empty);",
+                  "pm.test('every note has a known category and priority, a title and a detail', () => n.notes.forEach((x) => {",
+                  "  pm.expect(['entry','culture','weather','money','transport','electricity','health','safety','itinerary']).to.include(x.category);",
+                  "  pm.expect(['high','medium','low']).to.include(x.priority);",
+                  "  pm.expect(x.title).to.be.a('string').and.not.empty; pm.expect(x.detail).to.be.a('string').and.not.empty;",
+                  "}));",
+                  "pm.test('a day, when given, is one of the 7 days of the trip', () => n.notes.forEach((x) => { if (x.day !== null) pm.expect(x.day).to.be.within(1, 7); }));",
+                  "pm.test('most important first', () => { const r = { high: 0, medium: 1, low: 2 }; n.notes.forEach((x, i) => { if (i) pm.expect(r[x.priority]).to.be.at.least(r[n.notes[i - 1].priority]); }); });",
+                  "pm.test('always reminds the traveler to check entry rules (kept by the code)', () => pm.expect(n.notes.some((x) => x.category === 'entry')).to.eql(true));",
+                  "pm.test('source is llm or stub', () => pm.expect(['llm','stub']).to.include(n.source));"
                 ]
               }
             }
@@ -2009,190 +1993,25 @@
               }
             ],
             "body": {
-              "mode": "raw",
-              "raw": "{\n  \"user_id\": \"postman\",\n  \"origin\": \"SEA\",\n  \"destination\": \"Tokyo\",\n  \"nights\": 5,\n  \"budget\": 900\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Notes($tripId: ID!) {\n  tripNotes(tripId: $tripId) {\n    tripId destination source model generatedAt\n    notes { category priority title detail day itemId }\n  }\n}",
+                "variables": "{\n  \"tripId\": \"1\"\n}"
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/advice/recommendations",
+              "raw": "{{baseUrl}}/graphql",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "api",
-                "advice",
-                "recommendations"
+                "graphql"
               ]
             }
           }
         },
         {
-          "name": "Two travelers: flight and activities double, hotel room does not",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
-                  "const body = pm.response.json();",
-                  "pm.collectionVariables.set('recoId3', body.id);",
-                  "if (body.source === 'stub') {",
-                  "  // No LLM key: the rules pick the cheapest flight and the best-rated hotel, so the prices are known.",
-                  "  pm.test('flight and activities are doubled for 2 travelers', () => { pm.expect(body.breakdown.flights).to.eql(1691); pm.expect(body.breakdown.activities).to.eql(194); });",
-                  "  pm.test('the hotel room is charged once: best-rated hotel 410 x 2 nights, not x 2 travelers', () => pm.expect(body.breakdown.hotel).to.eql(820));",
-                  "} else {",
-                  "  // With an LLM key the model picks, so look up what it picked and check how it was charged.",
-                  "  const base = pm.variables.get('baseUrl');",
-                  "  pm.test('the hotel room is charged per night (x 2 nights), not per traveler', (done) => {",
-                  "    pm.sendRequest(`${base}/api/hotels/${body.selection.hotel_id}`, (err, res) => {",
-                  "      pm.expect(err).to.eql(null);",
-                  "      pm.expect(body.breakdown.hotel).to.be.closeTo(res.json().price_per_night * 2, 0.01);",
-                  "      done();",
-                  "    });",
-                  "  });",
-                  "  pm.test('the flight is charged per traveler (x 2)', (done) => {",
-                  "    pm.sendRequest(`${base}/api/flights/${body.selection.flight_id}`, (err, res) => {",
-                  "      pm.expect(err).to.eql(null);",
-                  "      pm.expect(body.breakdown.flights).to.be.closeTo(res.json().price * 2, 0.01);",
-                  "      done();",
-                  "    });",
-                  "  });",
-                  "}"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"user_id\": \"postman\",\n  \"origin\": \"SEA\",\n  \"destination\": \"Tokyo\",\n  \"nights\": 2,\n  \"travelers\": 2,\n  \"budget\": 5000\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/advice/recommendations",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "advice",
-                "recommendations"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Include a rental car (charged per day, once)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
-                  "const body = pm.response.json();",
-                  "pm.test('a car was selected', () => pm.expect(body.selection.car_rental_id).to.be.a('number'));",
-                  "pm.test('car cost = cheapest Tokyo car 61/day x 3 days', () => pm.expect(body.breakdown.car_rental).to.eql(183));",
-                  "pm.test('total includes the car', () => pm.expect(body.total).to.be.closeTo(body.breakdown.flights + body.breakdown.hotel + body.breakdown.car_rental + body.breakdown.activities, 0.01));",
-                  "pm.collectionVariables.set('recoId4', body.id);"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"user_id\": \"postman\",\n  \"origin\": \"SEA\",\n  \"destination\": \"Tokyo\",\n  \"nights\": 3,\n  \"budget\": 5000,\n  \"include_car\": true\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/advice/recommendations",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "advice",
-                "recommendations"
-              ]
-            }
-          }
-        },
-        {
-          "name": "ERROR: missing user_id and negative budget -> 400",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
-                  "const body = pm.response.json();",
-                  "pm.test('Error uses { error: { code, message } } with code BAD_REQUEST', () => { pm.expect(body.error.code).to.eql('BAD_REQUEST'); pm.expect(body.error.message).to.be.a('string'); });",
-                  "pm.test('details name both fields', () => { const f = body.error.details.map((d) => d.field); pm.expect(f).to.include.members(['user_id', 'budget']); });"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"destination\": \"Tokyo\",\n  \"budget\": -5\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/advice/recommendations",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "advice",
-                "recommendations"
-              ]
-            }
-          }
-        },
-        {
-          "name": "ERROR: destination with no data -> 404",
+          "name": "ERROR: a trip that is not yours (or does not exist) -> 404",
           "event": [
             {
               "listen": "test",
@@ -2200,8 +2019,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status is 404', () => pm.response.to.have.status(404));",
-                  "const body = pm.response.json();",
-                  "pm.test('Error uses { error: { code, message } } with code NOT_FOUND', () => { pm.expect(body.error.code).to.eql('NOT_FOUND'); pm.expect(body.error.message).to.be.a('string'); });"
+                  "pm.test('NOT_FOUND', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));"
                 ]
               }
             }
@@ -2216,7 +2034,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"user_id\": \"postman\",\n  \"destination\": \"Atlantis\",\n  \"budget\": 1000\n}",
+              "raw": "{\n  \"trip_id\": 999999\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2224,130 +2042,104 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/api/advice/recommendations",
+              "raw": "{{baseUrl}}/api/advice/trip-notes",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "advice",
-                "recommendations"
+                "trip-notes"
               ]
             }
           }
         },
         {
-          "name": "Cleanup: delete recommendations",
+          "name": "ERROR: trip_id is not a positive integer -> 400",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('names the field', () => pm.expect(pm.response.json().error.details[0].field).to.eql('trip_id'));"
                 ]
               }
             }
           ],
           "request": {
-            "method": "DELETE",
-            "header": [],
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trip_id\": \"abc\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
-              "raw": "{{baseUrl}}/api/advice/{{recoId}}",
+              "raw": "{{baseUrl}}/api/advice/trip-notes",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "advice",
-                "{{recoId}}"
+                "trip-notes"
               ]
             }
           }
         },
         {
-          "name": "Cleanup 2",
+          "name": "ERROR: no token -> 401 (the gateway checks it before the LLM service is called)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));"
                 ]
               }
             }
           ],
           "request": {
-            "method": "DELETE",
-            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trip_id\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
-              "raw": "{{baseUrl}}/api/advice/{{recoId2}}",
+              "raw": "{{baseUrl}}/api/advice/trip-notes",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "advice",
-                "{{recoId2}}"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Cleanup 3",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/advice/{{recoId3}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "advice",
-                "{{recoId3}}"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Cleanup 4",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/advice/{{recoId4}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "advice",
-                "{{recoId4}}"
+                "trip-notes"
               ]
             }
           }

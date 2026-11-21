@@ -91,6 +91,19 @@ const resolvers = {
             return body?.data ?? [];
         },
 
+        // A fixed AI chain in the LLM Service. It reads the trip as this user (X-User-Id) and the profile with the
+        // caller's own token, so it can only see what the caller can.
+        tripNotes: async (_p, { tripId }, ctx) => {
+            const userId = await requireUserId(ctx);
+            return upstream(ctx, 'llm', {
+                method: 'POST',
+                path: '/api/advice/trip-notes',
+                body: { trip_id: num(tripId) },
+                headers: { 'X-User-Id': String(userId), ...(ctx.authorization ? { Authorization: ctx.authorization } : {}) },
+                notFound: 'error',
+            });
+        },
+
         // Account data lives in the User Service. These are null (not an error) when nobody is signed in.
         me: (_p, _a, ctx) => signedOut(asToken(ctx, 'user', { path: '/api/users/me' })),
         myLanguageSettings: (_p, _a, ctx) =>
@@ -177,6 +190,14 @@ const resolvers = {
             day.items ?? (await asUser(ctx, 'trip', { path: dayPath(day.tripId, day.dayNumber) }))?.items ?? [],
         placeCount: (day) => day.placeCount ?? day.items?.length ?? 0,
     },
+
+    TripNotes: {
+        tripId: pick('trip_id'),
+        startDate: pick('start_date'),
+        endDate: pick('end_date'),
+        generatedAt: pick('generated_at'),
+    },
+    TripNote: { itemId: pick('item_id') },
 
     Advice: {
         tripId: pick('trip_id'),
