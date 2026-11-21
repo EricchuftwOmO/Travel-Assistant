@@ -6,6 +6,17 @@ const { upstream, upstreamGet, asToken, asUser, asUserMutation, requireUserId } 
 const snake = (s) => s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 const pick = (field) => (parent) => parent[field];
 
+// A JSON array stored as text, or [] when it is empty or unreadable.
+const parseJsonList = (text) => {
+    if (!text) return [];
+    try {
+        const value = typeof text === 'string' ? JSON.parse(text) : text;
+        return Array.isArray(value) ? value : [];
+    } catch {
+        return [];
+    }
+};
+
 // GET /api/<resource> returns { count, total, data }
 async function list(ctx, service, path, args) {
     const { sort, ...rest } = args;
@@ -170,6 +181,9 @@ const resolvers = {
     Advice: {
         tripId: pick('trip_id'),
         createdAt: pick('created_at'),
+        // The LLM service stores these as JSON text.
+        steps: (parent) => parseJsonList(parent.tool_steps),
+        flights: (parent) => parseJsonList(parent.flights),
     },
 
     // The REST user has these nested objects already; the fallback covers a user without them.

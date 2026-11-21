@@ -57,6 +57,16 @@ and saves it in `places` (`google_place_id`, address, lat, lng). Without a key t
 uses the sample catalog (`GET /api/places`, `{ placeId }`). The browser map uses the same key (or
 `GOOGLE_MAPS_API_KEY`) through the Maps JavaScript API.
 
+## AI Travel Assistant: tool calling
+
+With `GROQ_API_KEY` set, a question (`POST /api/advice`, GraphQL `askAdvice`) runs a tool-calling chain
+(`src/agent.js`): the model decides whether to call `search_flights` and with which airports, date and price,
+sees the results, and decides what to do next. At most 2 searches per question (`AGENT_MAX_TOOL_CALLS`); after that,
+and when the 45 s time budget runs low, it must answer. The tool only reads (GET /api/flights on the flight service);
+the model is told today's date and must only quote flights from the results. The answer is saved with `tool_steps`
+and up to 5 `flights` (JSON), which GraphQL returns as `steps` and `flights`. The chat shows them as cards; adding
+one to a trip needs the user to pick a trip and confirm. Without a key it answers with a travel joke (stub mode).
+
 ## Live flight search (SerpApi Google Flights)
 
 `GET /api/flights` with `origin`, `destination` and a future `departDate` also asks Google Flights through SerpApi
@@ -64,7 +74,8 @@ uses the sample catalog (`GET /api/places`, `{ placeId }`). The browser map uses
 `depart_local`, `arrive_local`, unique `external_key`), so they get normal ids that trips, the AI and GraphQL use.
 Reliability: 8 s timeout per attempt, one retry for timeouts, network errors, 5xx and 429 (not for a bad key),
 a searched route and date reused for 30 minutes, failures remembered for 60 s, and the stored catalog as the
-fallback. The `X-Flight-Source` header says `live`, `live-cached`, `fallback` or `catalog`. The gateway gives
+fallback. The `X-Flight-Source` header says `live`, `live-cached`, `fallback` or `catalog`. A search without `departDate` lists only
+catalog flights (live results belong to the date they were searched for) unless it asks for `source=serpapi`. The gateway gives
 flight requests 20 s (`FLIGHT_TIMEOUT_MS`) so it does not cut off a slow search or its retry.
 
 ## Trip flights

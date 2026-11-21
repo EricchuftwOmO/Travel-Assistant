@@ -25,6 +25,11 @@ async function initTable(pool, resource) {
            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
          )`);
 
+    // A table created by an older version gets the fields added since (never NOT NULL, so existing rows fit).
+    for (const [name, def] of Object.entries(resource.fields)) {
+        await pool.query(`ALTER TABLE ${resource.table} ADD COLUMN IF NOT EXISTS ${name} ${SQL_TYPES[def.type]}`);
+    }
+
     const { rows } = await pool.query(`SELECT COUNT(*) AS n FROM ${resource.table}`);
     if (rows[0].n > 0 || !resource.seed?.length) return;
     for (const row of resource.seed) await insert(pool, resource, row);

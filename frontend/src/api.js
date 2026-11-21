@@ -287,7 +287,10 @@ export const flightsApi = {
 
 // ---------- AI advice (the user id is never sent: the gateway knows who is signed in) ----------
 
-const ADVICE_FIELDS = 'id tripId topic prompt content source createdAt';
+// steps: the tool calls the assistant made; flights: what its searches found (for the chat's cards)
+const ADVICE_FIELDS = `id tripId topic prompt content source createdAt
+  steps { tool summary count }
+  flights { ${FLIGHT_FIELDS} }`;
 
 export const adviceApi = {
   recent: (tripId, limit = 5) =>
