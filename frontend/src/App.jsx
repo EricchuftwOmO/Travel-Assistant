@@ -5,6 +5,7 @@ import FlightSearchPage from './pages/FlightSearchPage';
 import MyTripsPage from './pages/MyTripsPage';
 import TripDetailsPage from './pages/TripDetailsPage';
 import ProfilePage from './pages/ProfilePage';
+import ChatWidget from './components/ChatWidget';
 
 function RequireLogin({ children }) {
   const { user, loading } = useAuth();
@@ -45,6 +46,7 @@ function Header() {
 }
 
 export default function App() {
+  const { user } = useAuth();
   return (
     <>
       <Header />
@@ -58,6 +60,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/trips" replace />} />
         </Routes>
       </main>
+      {user && <ChatWidget />}
     </>
   );
 }

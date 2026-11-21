@@ -1,7 +1,8 @@
-// Asks the language model (Groq) for advice. Without GROQ_API_KEY a placeholder answer is stored.
+// Asks the language model (Groq) for advice. Without GROQ_API_KEY it answers with a travel joke (stub mode).
 
 const Groq = require('groq-sdk');
 const { HttpError } = require('./errors');
+const { pickJoke } = require('./jokes');
 
 const MODEL = process.env.LLM_MODEL || 'openai/gpt-oss-20b';
 const TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 30000;
@@ -11,9 +12,10 @@ const SYSTEM_PROMPT =
     'with practical, specific tips. Do not invent prices, opening hours or booking details.';
 
 async function generateAdvice({ topic, prompt }) {
+    // Stub mode: no model to ask, so answer with a travel joke (labelled "stub" for clients).
     if (!process.env.GROQ_API_KEY) {
         return {
-            content: `(No LLM configured) Placeholder ${topic} advice for: ${prompt}`,
+            content: pickJoke(),
             model: 'stub',
             source: 'stub',
         };

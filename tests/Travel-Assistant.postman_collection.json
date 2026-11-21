@@ -1978,9 +1978,29 @@
                 "exec": [
                   "pm.test('Status is 201', () => pm.response.to.have.status(201));",
                   "const body = pm.response.json();",
-                  "pm.test('flight and activities are doubled for 2 travelers', () => { pm.expect(body.breakdown.flights).to.eql(1691); pm.expect(body.breakdown.activities).to.eql(194); });",
-                  "pm.test('the hotel room is charged once: best-rated hotel 410 x 2 nights, not x 2 travelers', () => pm.expect(body.breakdown.hotel).to.eql(820));",
-                  "pm.collectionVariables.set('recoId3', body.id);"
+                  "pm.collectionVariables.set('recoId3', body.id);",
+                  "if (body.source === 'stub') {",
+                  "  // No LLM key: the rules pick the cheapest flight and the best-rated hotel, so the prices are known.",
+                  "  pm.test('flight and activities are doubled for 2 travelers', () => { pm.expect(body.breakdown.flights).to.eql(1691); pm.expect(body.breakdown.activities).to.eql(194); });",
+                  "  pm.test('the hotel room is charged once: best-rated hotel 410 x 2 nights, not x 2 travelers', () => pm.expect(body.breakdown.hotel).to.eql(820));",
+                  "} else {",
+                  "  // With an LLM key the model picks, so look up what it picked and check how it was charged.",
+                  "  const base = pm.variables.get('baseUrl');",
+                  "  pm.test('the hotel room is charged per night (x 2 nights), not per traveler', (done) => {",
+                  "    pm.sendRequest(`${base}/api/hotels/${body.selection.hotel_id}`, (err, res) => {",
+                  "      pm.expect(err).to.eql(null);",
+                  "      pm.expect(body.breakdown.hotel).to.be.closeTo(res.json().price_per_night * 2, 0.01);",
+                  "      done();",
+                  "    });",
+                  "  });",
+                  "  pm.test('the flight is charged per traveler (x 2)', (done) => {",
+                  "    pm.sendRequest(`${base}/api/flights/${body.selection.flight_id}`, (err, res) => {",
+                  "      pm.expect(err).to.eql(null);",
+                  "      pm.expect(body.breakdown.flights).to.be.closeTo(res.json().price * 2, 0.01);",
+                  "      done();",
+                  "    });",
+                  "  });",
+                  "}"
                 ]
               }
             }
@@ -3399,15 +3419,16 @@
           }
         },
         {
-          "name": "The deleted user has no trips left",
+          "name": "ERROR: the deleted account's token no longer works -> 401",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
-                  "pm.test('no trips', () => pm.expect(pm.response.json()).to.have.lengthOf(0));"
+                  "// The gateway asks the user service about every token, and a deleted account is rejected.",
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error code UNAUTHORIZED', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHORIZED'));"
                 ]
               }
             }

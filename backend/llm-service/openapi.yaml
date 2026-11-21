@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: 'Saved travel advice. When a new advice record is created without "content", the LLM service asks
     the language model to answer the "prompt" and stores the answer. Without an API key it stores a
-    placeholder answer (source "stub") so the service still works offline. Errors use { "error": { "code",
+    travel joke (source "stub") so the service still works offline. Errors use { "error": { "code",
     "message", "details" } }.'
 servers:
   - url: http://localhost:3008
@@ -144,7 +144,7 @@ paths:
       summary: Create a advice
       operationId: createAdvice
       description: Send every required field. If "content" is left out, the language model writes it from "prompt"
-        (source "llm"); with no API key a placeholder is stored (source "stub"). A model failure returns 502
+        (source "llm"); with no API key a travel joke is stored (source "stub"). A model failure returns 502
         LLM_UNAVAILABLE.
       requestBody:
         required: true
@@ -351,7 +351,7 @@ components:
             - stub
             - user
             - null
-          description: llm = model answer, stub = placeholder (no API key), user = content supplied by the caller
+          description: llm = model answer, stub = a travel joke (no API key), user = content supplied by the caller
         created_at:
           type: string
           format: date-time
