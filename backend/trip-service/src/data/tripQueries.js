@@ -70,4 +70,11 @@ const deleteTrip = async (id, ownerId) => {
   return rowCount > 0;
 };
 
-module.exports = { createTrip, listTrips, findTrip, updateTrip, deleteTrip };
+// Removes every trip of a user (their days, places and flights cascade).
+// Called when the user service deletes the account.
+const deleteTripsByOwner = async (ownerId) => {
+  const { rowCount } = await db.query('DELETE FROM trips WHERE owner_id = $1', [ownerId]);
+  return rowCount;
+};
+
+module.exports = { createTrip, listTrips, findTrip, updateTrip, deleteTrip, deleteTripsByOwner };

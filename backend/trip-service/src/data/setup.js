@@ -23,16 +23,20 @@ const ensureDatabase = async () => {
 };
 
 // Run schema.sql and seed.sql in one transaction if the tables are missing.
+// upgrade.sql then runs on every start, adding columns that newer versions need.
 const ensureSchema = async (db) => {
-  const { rows } = await db.query("SELECT to_regclass('public.users') AS existing");
-  if (rows[0].existing) return false;
-
   const read = (file) => fs.readFileSync(path.join(__dirname, file), 'utf8');
+  const { rows } = await db.query("SELECT to_regclass('public.trips') AS existing");
+  const created = !rows[0].existing;
+
   await db.withTransaction(async (client) => {
-    await client.query(read('schema.sql'));
-    await client.query(read('seed.sql'));
+    if (created) {
+      await client.query(read('schema.sql'));
+      await client.query(read('seed.sql'));
+    }
+    await client.query(read('upgrade.sql'));
   });
-  return true;
+  return created;
 };
 
 module.exports = { ensureDatabase, ensureSchema };

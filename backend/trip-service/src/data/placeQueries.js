@@ -1,6 +1,6 @@
 const db = require('./db');
 
-const PLACE_COLUMNS = `id, google_place_id AS "googlePlaceId", name, city, category`;
+const PLACE_COLUMNS = `id, google_place_id AS "googlePlaceId", name, city, category, address, lat, lng`;
 
 // city and category match whole values, ignoring case.
 const listPlaces = async ({ city, category }) => {
@@ -29,4 +29,19 @@ const findPlace = async (id, client = db) => {
   return rows[0] || null;
 };
 
-module.exports = { listPlaces, findPlace };
+// Saves a place picked from Google (or refreshes its details) and returns it.
+// google_place_id is unique, so the same Google place is stored only once.
+const upsertGooglePlace = async ({ googlePlaceId, name, city, category, address, lat, lng }, client = db) => {
+  const { rows } = await client.query(
+    `INSERT INTO places (google_place_id, name, city, category, address, lat, lng)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (google_place_id) DO UPDATE SET
+       name = EXCLUDED.name, city = EXCLUDED.city, category = EXCLUDED.category,
+       address = EXCLUDED.address, lat = EXCLUDED.lat, lng = EXCLUDED.lng
+     RETURNING ${PLACE_COLUMNS}`,
+    [googlePlaceId, name, city, category, address, lat, lng]
+  );
+  return rows[0];
+};
+
+module.exports = { listPlaces, findPlace, upsertGooglePlace };

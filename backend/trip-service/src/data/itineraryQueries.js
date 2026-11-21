@@ -9,7 +9,10 @@ const ITEM_QUERY = `
       'googlePlaceId', p.google_place_id,
       'name', p.name,
       'city', p.city,
-      'category', p.category
+      'category', p.category,
+      'address', p.address,
+      'lat', p.lat,
+      'lng', p.lng
     ) AS place
   FROM itinerary_items it
   JOIN places p ON p.id = it.place_id`;

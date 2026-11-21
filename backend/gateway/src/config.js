@@ -25,6 +25,10 @@ function loadConfig() {
 
         // A service with no URL is not routed (the planner has no default).
         services: {
+            user: {
+                url: process.env.USER_SERVICE_URL || 'http://localhost:3009',
+                timeoutMs: defaultTimeoutMs,
+            },
             trip: {
                 url: process.env.TRIP_SERVICE_URL || 'http://localhost:3001',
                 timeoutMs: defaultTimeoutMs,

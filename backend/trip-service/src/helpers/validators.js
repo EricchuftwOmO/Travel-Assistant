@@ -2,11 +2,12 @@ const ApiError = require('./ApiError');
 const { countDays } = require('./dates');
 
 const MAX_ID = 2147483647; // largest value of a PostgreSQL INTEGER
-const MAX_PASSWORD_BYTES = 72; // bcrypt ignores anything past 72 bytes
 const MAX_TRIP_DAYS = 90; // every day becomes an itinerary row, so length is capped
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TRIP_STATUSES = ['upcoming', 'past'];
+const PLACE_CATEGORIES = ['attraction', 'food', 'museum', 'nature', 'shopping'];
+const GOOGLE_PLACE_ID = /^[A-Za-z0-9_-]{10,300}$/;
+const LANGUAGE = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/;
 
 const fail = (details) => {
   throw new ApiError(400, 'Request validation failed', details);
@@ -32,12 +33,6 @@ const readText = (body, field, maxLength, errors) => {
   const text = value.trim();
   if (text.length > maxLength) errors.push(`${field} must be at most ${maxLength} characters`);
   return text;
-};
-
-const readEmail = (body, errors) => {
-  const email = readText(body, 'email', 254, errors);
-  if (email && !EMAIL_PATTERN.test(email)) errors.push('email must be a valid email address');
-  return email && email.toLowerCase();
 };
 
 // Reads an optional query-string filter. A repeated parameter arrives as an
@@ -66,41 +61,6 @@ const isRealDate = (value) => {
   return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value);
 };
 
-const validateRegistration = (req) => {
-  const body = bodyOf(req);
-  const errors = [];
-  const name = readText(body, 'name', 100, errors);
-  const email = readEmail(body, errors);
-  const { password } = body;
-  if (typeof password !== 'string' || password.length < 8) {
-    errors.push('password must be at least 8 characters');
-  } else if (Buffer.byteLength(password) > MAX_PASSWORD_BYTES) {
-    errors.push(`password must be at most ${MAX_PASSWORD_BYTES} bytes`);
-  }
-  if (errors.length) fail(errors);
-  return { name, email, password };
-};
-
-const validateLogin = (req) => {
-  const body = bodyOf(req);
-  const errors = [];
-  const email = readEmail(body, errors);
-  if (typeof body.password !== 'string' || body.password === '') {
-    errors.push('password is required');
-  }
-  if (errors.length) fail(errors);
-  return { email, password: body.password };
-};
-
-const validateProfile = (req) => {
-  const body = bodyOf(req);
-  const errors = [];
-  const name = readText(body, 'name', 100, errors);
-  const email = readEmail(body, errors);
-  if (errors.length) fail(errors);
-  return { name, email };
-};
-
 const validateTrip = (req) => {
   const body = bodyOf(req);
   const errors = [];
@@ -122,7 +82,22 @@ const validateTrip = (req) => {
   return { title, destination, startDate, endDate };
 };
 
+// flightId is optional when creating a trip: a trip can start with or without a flight.
+const validateOptionalFlightId = (req) => {
+  const { flightId } = bodyOf(req);
+  if (flightId === undefined || flightId === null) return undefined;
+  if (!isId(flightId)) fail(['flightId must be a positive integer']);
+  return flightId;
+};
+
+const validateFlightId = (req) => {
+  const { flightId } = bodyOf(req);
+  if (!isId(flightId)) fail(['flightId is required and must be a positive integer']);
+  return flightId;
+};
+
 const validateTripId = (req) => readIdParam(req, 'tripId');
+const validateTripFlightId = (req) => readIdParam(req, 'tripFlightId');
 const validateDayNumber = (req) => readIdParam(req, 'dayNumber');
 const validateItemId = (req) => readIdParam(req, 'itemId');
 
@@ -137,16 +112,33 @@ const validateTripFilters = (req) => {
   return { search, status };
 };
 
+// A place from the sample catalog (placeId) or from Google Places (googlePlaceId), not both.
 // position is optional; leaving it out adds the place to the end of the day.
 const validateNewItem = (req) => {
   const body = bodyOf(req);
   const errors = [];
-  if (!isId(body.placeId)) errors.push('placeId is required and must be a positive integer');
+  const hasLocal = body.placeId !== undefined;
+  const hasGoogle = body.googlePlaceId !== undefined;
+  if (hasLocal === hasGoogle) {
+    errors.push('send either placeId (sample catalog) or googlePlaceId (Google Places), not both');
+  } else if (hasLocal && !isId(body.placeId)) {
+    errors.push('placeId must be a positive integer');
+  } else if (hasGoogle && (typeof body.googlePlaceId !== 'string' || !GOOGLE_PLACE_ID.test(body.googlePlaceId))) {
+    errors.push('googlePlaceId must be a Google place ID');
+  }
   if (body.position !== undefined && !isId(body.position)) {
     errors.push('position must be a positive integer');
   }
+  if (body.language !== undefined && (typeof body.language !== 'string' || !LANGUAGE.test(body.language))) {
+    errors.push('language must be a language code such as en or zh-TW');
+  }
   if (errors.length) fail(errors);
-  return { placeId: body.placeId, position: body.position };
+  return {
+    placeId: body.placeId,
+    googlePlaceId: body.googlePlaceId,
+    position: body.position,
+    language: body.language || 'en',
+  };
 };
 
 const validateItemOrder = (req) => {
@@ -166,11 +158,62 @@ const validatePlaceFilters = (req) => {
   return { city, category };
 };
 
+const readNumber = (query, field, min, max, errors, { required = true } = {}) => {
+  const value = query[field];
+  if (value === undefined) {
+    if (required) errors.push(`${field} is required`);
+    return undefined;
+  }
+  const number = typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+  if (!Number.isFinite(number) || number < min || number > max) {
+    errors.push(`${field} must be a number from ${min} to ${max}`);
+    return undefined;
+  }
+  return number;
+};
+
+const readLanguage = (query, errors) => {
+  const { language } = query;
+  if (language === undefined) return 'en';
+  if (typeof language !== 'string' || !LANGUAGE.test(language)) {
+    errors.push('language must be a language code such as en or zh-TW');
+    return undefined;
+  }
+  return language;
+};
+
+// GET /api/places/nearby: the visible map area as a center and a radius in meters.
+const validateNearby = (req) => {
+  const errors = [];
+  const lat = readNumber(req.query, 'lat', -90, 90, errors);
+  const lng = readNumber(req.query, 'lng', -180, 180, errors);
+  const radius = readNumber(req.query, 'radius', 100, 50000, errors, { required: false }) ?? 1500;
+  const category = readQueryText(req.query, 'category', errors);
+  if (category && !PLACE_CATEGORIES.includes(category)) {
+    errors.push(`category must be one of: ${PLACE_CATEGORIES.join(', ')}`);
+  }
+  const language = readLanguage(req.query, errors);
+  if (errors.length) fail(errors);
+  return { lat, lng, radius: Math.round(radius), category, language };
+};
+
+// GET /api/places/locate?q=Tokyo
+const validateLocate = (req) => {
+  const errors = [];
+  const q = readQueryText(req.query, 'q', errors);
+  if (!q && !errors.length) errors.push('q is required, e.g. q=Tokyo');
+  const language = readLanguage(req.query, errors);
+  if (errors.length) fail(errors);
+  return { q, language };
+};
+
 module.exports = {
-  validateRegistration,
-  validateLogin,
-  validateProfile,
+  validateNearby,
+  validateLocate,
   validateTrip,
+  validateOptionalFlightId,
+  validateFlightId,
+  validateTripFlightId,
   validateTripId,
   validateDayNumber,
   validateItemId,

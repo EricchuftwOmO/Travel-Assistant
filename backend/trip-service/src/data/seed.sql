@@ -1,11 +1,5 @@
--- Simulated demo data. Every seeded user signs in with the password: Password123!
-INSERT INTO users (name, email, password_hash) VALUES
-  ('Alice Chen',  'alice@example.com', '$2b$10$oeX2uQ5Jre4KLF6wl9hEFeIl9Bq21T93ujHQcqYACRmnHLJz7ZsMe'),
-  ('Bob Tanaka',  'bob@example.com',   '$2b$10$oeX2uQ5Jre4KLF6wl9hEFeIl9Bq21T93ujHQcqYACRmnHLJz7ZsMe'),
-  ('Carol Lopez', 'carol@example.com', '$2b$10$oeX2uQ5Jre4KLF6wl9hEFeIl9Bq21T93ujHQcqYACRmnHLJz7ZsMe'),
-  ('David Kim',   'david@example.com', '$2b$10$oeX2uQ5Jre4KLF6wl9hEFeIl9Bq21T93ujHQcqYACRmnHLJz7ZsMe'),
-  ('Emma Wilson', 'emma@example.com',  '$2b$10$oeX2uQ5Jre4KLF6wl9hEFeIl9Bq21T93ujHQcqYACRmnHLJz7ZsMe');
-
+-- Simulated demo data. owner_id 1-5 are the sample users of the user service
+-- (Alice, Bob, Carol, David, Emma; password Password123!).
 INSERT INTO trips (owner_id, title, destination, start_date, end_date) VALUES
   (1, 'Japan Trip',           'Tokyo',       '2027-01-28', '2027-02-03'),
   (1, 'California Road Trip', 'California',  '2027-03-10', '2027-03-15'),
@@ -73,3 +67,4 @@ FROM (VALUES
 ) AS v (trip_id, day_number, place_name, position)
 JOIN itineraries i ON i.trip_id = v.trip_id AND i.day_number = v.day_number
 JOIN places p ON p.name = v.place_name;
+

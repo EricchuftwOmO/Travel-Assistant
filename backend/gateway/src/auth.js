@@ -5,6 +5,9 @@ const { sendError } = require('./errors');
 
 const PUBLIC_RULES = [
     { methods: ['POST'], pattern: /^\/api\/auth\/(register|login)\/?$/ },
+    // GraphQL has public operations (login, register): the user service checks the token per field.
+    { methods: ['POST'], pattern: /^\/api\/graphql\/?$/ },
+    { methods: ['GET', 'HEAD'], pattern: /^\/api\/graphql\/schema\/?$/ },
     { methods: ['GET', 'HEAD'], pattern: /^\/api\/(flights|hotels|car-rentals|activities)(\/|$)/ },
 ];
 

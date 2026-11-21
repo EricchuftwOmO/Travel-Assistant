@@ -10,6 +10,7 @@ const { withTransaction } = require('../data/db');
 const trips = require('../data/tripQueries');
 const itineraries = require('../data/itineraryQueries');
 const places = require('../data/placeQueries');
+const google = require('../helpers/googlePlaces');
 
 const itemNotFound = () => new ApiError(404, 'Itinerary item not found');
 
@@ -62,11 +63,23 @@ const getItem = async (req, res) => {
   res.status(200).json(item);
 };
 
+// A Google place is looked up first (outside the transaction), so its name and location come from
+// Google, not the client, and are saved in places before the item points at it.
+const resolveGooglePlace = async (googlePlaceId, language) => {
+  const details = await google.getPlace(googlePlaceId, language);
+  if (!details) throw invalidRequest('googlePlaceId does not match any Google place');
+  return details;
+};
+
 const addItem = async (req, res) => {
-  const { placeId, position } = validateNewItem(req);
+  const { placeId: localPlaceId, googlePlaceId, position, language } = validateNewItem(req);
+  const googleDetails = googlePlaceId ? await resolveGooglePlace(googlePlaceId, language) : null;
 
   const { day, item } = await withLockedDay(req, async (lockedDay, client) => {
-    if (!(await places.findPlace(placeId, client))) {
+    let placeId = localPlaceId;
+    if (googleDetails) {
+      placeId = (await places.upsertGooglePlace(googleDetails, client)).id;
+    } else if (!(await places.findPlace(placeId, client))) {
       throw invalidRequest('placeId does not match any place');
     }
 

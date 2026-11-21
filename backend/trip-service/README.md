@@ -1,10 +1,10 @@
 # Trip Service
 
-The Travel Assistant service for user accounts, trips, and day-by-day itineraries. Users create an account, sign in, manage their own trips, and plan each day of a trip with an ordered list of places. The API keeps each account private: a user can only reach their own profile, trips, and itineraries.
+The Travel Assistant service for trips, the flights attached to them, and day-by-day itineraries. Users (who sign in through the user service) manage their own trips and plan each day with an ordered list of places. The API keeps each account private: a user can only reach their own trips and itineraries.
 
 ## Key Features
 
-- **Accounts:** register, log in, and view, update, or delete your own account.
+- **Flights on trips:** attach a flight from the flight service, or create a trip from one.
 - **Trips:** full CRUD for the signed-in user's trips.
 - **Search and filtering:** find trips by a keyword in the title, list upcoming or past trips, or combine both.
 - **Day-by-day itineraries:** every trip gets one day per date automatically. Add a place at any position, reorder a day, remove one place, or clear a whole day.
@@ -79,7 +79,7 @@ Alice's Japan Trip (trip 1) and Taiwan Trip (trip 3) already have places planned
 
 ## Using the API
 
-1. Send `POST /api/auth/login` with an email and password.
+1. Log in through the user service: `POST /api/auth/login` (or the GraphQL `login` mutation at `/api/graphql`).
 2. Copy the `token` from the response.
 3. Send `Authorization: Bearer <token>` with each protected request. Tokens expire after 1 hour.
 
@@ -96,16 +96,14 @@ curl "http://localhost:8080/api/trips?search=japan&status=upcoming" \
 
 | Method | Path | Description | Token |
 |---|---|---|---|
-| POST | `/api/auth/register` | Register an account | No |
-| POST | `/api/auth/login` | Log in and receive a token | No |
-| GET | `/api/users/me` | Get my account | Yes |
-| PUT | `/api/users/me` | Update my name and email | Yes |
-| DELETE | `/api/users/me` | Delete my account and trips | Yes |
-| POST | `/api/trips` | Create a trip | Yes |
+| POST | `/api/trips` | Create a trip (optional `flightId` attaches a flight) | Yes |
 | GET | `/api/trips` | List my trips, with optional `search` and `status` filters | Yes |
 | GET | `/api/trips/:tripId` | Get one of my trips | Yes |
 | PUT | `/api/trips/:tripId` | Update one of my trips | Yes |
 | DELETE | `/api/trips/:tripId` | Delete one of my trips | Yes |
+| GET | `/api/trips/:tripId/flights` | List the flights on a trip | Yes |
+| POST | `/api/trips/:tripId/flights` | Attach a flight (`{ "flightId": 1 }`), copied from the flight service | Yes |
+| DELETE | `/api/trips/:tripId/flights/:tripFlightId` | Remove a flight from a trip | Yes |
 | GET | `/api/trips/:tripId/itineraries` | List a trip's days, with the number of places on each | Yes |
 | GET | `/api/trips/:tripId/itineraries/:dayNumber` | Get one day's places in visiting order | Yes |
 | POST | `/api/trips/:tripId/itineraries/:dayNumber/items` | Add a place at a position, or at the end | Yes |
@@ -184,14 +182,14 @@ backend/trip-service/
 
 A request moves through `route → controller → data → PostgreSQL`. Each service module has its own route, controller, and query files:
 
-- **Users:** registration, login, and the signed-in user's account.
 - **Trips:** the trip CRUD operations, search, and status filtering.
+- **Trip flights:** flights attached to a trip, copied from the flight service (`helpers/flightClient.js`).
 - **Itineraries:** a trip's days and the ordered places on each day.
 - **Places:** the catalog of places that can be added to a day.
 
 ## Data Source
 
-The data in `src/data/seed.sql` is simulated. It contains 5 users, 15 trips, 22 places, 116 itinerary days (one for each date of each trip), and 14 planned itinerary items. The places are well-known landmarks entered by hand with a name, city, and category. No external dataset or real personal data is used.
+The data in `src/data/seed.sql` is simulated. It contains 15 trips (owned by the user service's 5 sample users), 22 places, 116 itinerary days (one for each date of each trip), and 14 planned itinerary items. The places are well-known landmarks entered by hand with a name, city, and category. No external dataset or real personal data is used.
 
 ## Design Notes and Limitations
 
