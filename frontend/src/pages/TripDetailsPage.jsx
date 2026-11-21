@@ -6,6 +6,7 @@ import ErrorMessage from '../components/ErrorMessage';
 import Modal from '../components/Modal';
 import TripForm from '../components/TripForm';
 import PlaceMapPicker, { MAPS_API_KEY } from '../components/PlaceMapPicker';
+import TripNotesCard from '../components/TripNotesCard';
 
 // Screen 03: an Overview tab plus one tab per travel day. The tab is kept in the URL (?day=2).
 export default function TripDetailsPage() {
@@ -90,7 +91,7 @@ export default function TripDetailsPage() {
       </div>
 
       {activeDay === 0 ? (
-        <OverviewTab trip={trip} onChanged={load} />
+        <OverviewTab trip={trip} onChanged={load} onOpenDay={selectTab} />
       ) : (
         <DayTab key={activeDay} trip={trip} dayNumber={activeDay} />
       )}
@@ -110,7 +111,7 @@ export default function TripDetailsPage() {
   );
 }
 
-function OverviewTab({ trip, onChanged }) {
+function OverviewTab({ trip, onChanged, onOpenDay }) {
   const [error, setError] = useState(null);
 
   const removeFlight = async (flight) => {
@@ -156,6 +157,7 @@ function OverviewTab({ trip, onChanged }) {
         )}
       </section>
 
+      <TripNotesCard trip={trip} onOpenDay={onOpenDay} />
 
       <section className="card card-muted">
         <h2>Trip members &amp; shared expenses</h2>

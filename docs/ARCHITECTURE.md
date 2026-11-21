@@ -71,10 +71,9 @@ flowchart TB
     flight -.->|"planned: live results"| serpapi
     hotel -.->|"planned: live results"| serpapi
 
-    llm -->|"recommendations"| flight
-    llm --> hotel
-    llm --> car
-    llm --> activity
+    llm -->|"search_flights tool"| flight
+    llm -->|"pre-trip notes"| user
+    llm -->|"pre-trip notes"| trip
 
     classDef planned stroke-dasharray: 5 5,fill:#f4f4f4,color:#666
 ```
@@ -82,9 +81,11 @@ flowchart TB
 Dotted arrows to Redis mean the cache is optional: if Redis is down, the services read
 from PostgreSQL instead.
 
-**The AI component is the LLM service.** It saves advice and, when asked, has Groq write it. For a
-recommendation it calls the Flight, Hotel, Car Rental and Activity services directly (not through the
-gateway), lets the model choose among the results, adds up the cost in code, and saves the result in `llm_db`.
+**The AI component is the LLM service.** It has two chains, and calls other services directly (not through the gateway):
+- **Pre-trip notes (fixed chain):** the code reads the traveler from the User service and the trip from the Trip
+  service, checks the plan, asks Groq once (no tools) for JSON notes and checks them. Nothing is saved.
+- **AI assistant (tool-calling chain):** Groq decides whether to call `search_flights` (the Flight service), at most
+  twice per question; the answer is saved in `llm_db`.
 
 ## 2. Containers and ports
 

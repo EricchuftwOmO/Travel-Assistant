@@ -25,7 +25,7 @@ function createApp({ pool, cache, resource, hooks, serviceName, extend }) {
     app.use('/docs', swaggerUi.serve, swaggerUi.setup(YAML.parse(fs.readFileSync(specPath, 'utf8'))));
     app.get('/openapi.yaml', (req, res) => res.type('application/yaml').sendFile(specPath));
 
-    // extra routes (e.g. POST /api/advice/recommendations) go first so they win over /:id
+    // extra routes (e.g. POST /api/advice/trip-notes) go first so they win over /:id
     if (extend) app.use(resource.path, extend);
     app.use(resource.path, createCrudRouter(resource, pool, cache, hooks));
 

@@ -165,6 +165,17 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .tabs button { border: 0; background: none; padding: 10px 14px; font: inherit; font-weight: 500; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
 .tabs button[aria-selected='true'] { color: var(--accent-strong); border-bottom-color: var(--accent); }
 .overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* Before you go (pre-trip notes) */
+.trip-notes .notes-source { margin: -4px 0 12px; }
+.note-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.note { display: flex; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-muted); border-left: 3px solid var(--border); }
+.note-high { border-left-color: var(--danger); }
+.note-medium { border-left-color: var(--accent); }
+.note-icon { font-size: 1.1rem; line-height: 1.4; }
+.note-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 2px; }
+.note .muted { margin: 0; }
+.badge-high { background: var(--danger-soft); color: var(--danger); }
 .itinerary { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .itinerary-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); cursor: grab; }
 .itinerary-item.dragging { opacity: 0.4; }
