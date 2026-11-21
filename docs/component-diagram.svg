@@ -1,0 +1,180 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowAi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#15803d"/>
+    </marker>
+    <style>
+      .title { font-size: 24px; font-weight: 700; fill: #0f172a; }
+      .h { font-size: 15px; font-weight: 700; fill: #0f172a; }
+      .s { font-size: 12px; fill: #334155; }
+      .xs { font-size: 11px; fill: #475569; }
+      .lbl { font-size: 11px; fill: #334155; font-style: italic; }
+      .lblAi { font-size: 11px; fill: #15803d; font-style: italic; font-weight: 600; }
+      .lbl, .lblAi { paint-order: stroke; stroke: #ffffff; stroke-width: 5px; stroke-linejoin: round; }
+      .line { stroke: #475569; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .lineAi { stroke: #15803d; stroke-width: 1.6; fill: none; marker-end: url(#arrowAi); }
+      .ext { stroke: #64748b; stroke-width: 1.4; fill: none; stroke-dasharray: 6 4; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1500" height="900" fill="#ffffff"/>
+  <text x="40" y="42" class="title">Travel Assistant: component diagram</text>
+  <text x="40" y="64" class="s">Docker Compose. Every service owns its PostgreSQL database; only the gateway is reachable from outside.</text>
+
+  <!-- Client -->
+  <rect x="400" y="88" width="520" height="70" rx="10" fill="#f1f5f9" stroke="#334155" stroke-width="1.5"/>
+  <text x="660" y="114" text-anchor="middle" class="h">React Frontend (Vite + nginx, :5173)</text>
+  <text x="660" y="134" text-anchor="middle" class="s">Login · Flight Search · My Trips · Trip Details (Before you go) · Profile · AI chat</text>
+  <text x="660" y="150" text-anchor="middle" class="xs">uses only the gateway's GraphQL API</text>
+
+  <!-- Gateway -->
+  <rect x="40" y="200" width="1122" height="130" rx="12" fill="#f5f3ff" stroke="#6d28d9" stroke-width="2"/>
+  <text x="58" y="224" class="h" fill="#4c1d95">API Gateway (Node/Express, :8080), the single entry point</text>
+  <rect x="58" y="236" width="420" height="80" rx="8" fill="#ede9fe" stroke="#7c3aed"/>
+  <text x="268" y="260" text-anchor="middle" class="h">GraphQL microservice  POST /graphql</text>
+  <text x="268" y="280" text-anchor="middle" class="s">graphql-yoga · schema.graphql (19 queries, 17 mutations)</text>
+  <text x="268" y="298" text-anchor="middle" class="xs">resolvers call the REST services below and join their data</text>
+  <rect x="494" y="236" width="300" height="80" rx="8" fill="#ede9fe" stroke="#7c3aed"/>
+  <text x="644" y="260" text-anchor="middle" class="h">REST reverse proxy  /api/*</text>
+  <text x="644" y="280" text-anchor="middle" class="s">routing · timeouts · CORS · request IDs</text>
+  <text x="644" y="298" text-anchor="middle" class="xs">(Postman / curl)</text>
+  <rect x="810" y="236" width="336" height="80" rx="8" fill="#ede9fe" stroke="#7c3aed"/>
+  <text x="978" y="260" text-anchor="middle" class="h">Login check</text>
+  <text x="978" y="280" text-anchor="middle" class="s">Bearer JWT → User Service /api/auth/validate</text>
+  <text x="978" y="298" text-anchor="middle" class="xs">then sends X-User-Id to the other services</text>
+
+  <path d="M660,158 L660,198" class="line"/>
+  <text x="668" y="184" class="lbl">HTTPS · GraphQL + Bearer JWT</text>
+
+  <!-- Gateway to services -->
+  <g>
+    <path d="M115,330 L115,418" class="line"/>
+    <path d="M277,330 L277,418" class="line"/>
+    <path d="M439,330 L439,418" class="line"/>
+    <path d="M601,330 L601,418" class="line"/>
+    <path d="M763,330 L763,418" class="line"/>
+    <path d="M925,330 L925,418" class="line"/>
+    <path d="M1087,330 L1087,418" class="line"/>
+    <text x="682" y="378" class="lbl" text-anchor="middle">REST / JSON over the internal network</text>
+  </g>
+
+  <!-- Services: User -->
+  <rect x="40" y="420" width="150" height="140" rx="10" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.6"/>
+  <text x="115" y="443" text-anchor="middle" class="h">User Service</text>
+  <text x="115" y="461" text-anchor="middle" class="s">REST · :3009</text>
+  <text x="115" y="481" text-anchor="middle" class="xs">issues &amp; validates JWT</text>
+  <text x="115" y="496" text-anchor="middle" class="xs">(HS256), bcrypt,</text>
+  <text x="115" y="511" text-anchor="middle" class="xs">profiles, Google sign-in</text>
+  <text x="115" y="545" text-anchor="middle" class="xs">PostgreSQL: user_db</text>
+
+  <!-- Trip (monolith) -->
+  <rect x="202" y="420" width="150" height="140" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="2"/>
+  <text x="277" y="443" text-anchor="middle" class="h">Trip Service</text>
+  <text x="277" y="461" text-anchor="middle" class="s" font-weight="700" fill="#c2410c">Monolith (Phase I)</text>
+  <text x="277" y="479" text-anchor="middle" class="s">REST · :3001</text>
+  <text x="277" y="497" text-anchor="middle" class="xs">trips, flights on trips,</text>
+  <text x="277" y="512" text-anchor="middle" class="xs">itineraries, places</text>
+  <text x="277" y="545" text-anchor="middle" class="xs">PostgreSQL: trip_db</text>
+
+  <!-- Flight -->
+  <rect x="364" y="420" width="150" height="140" rx="10" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.6"/>
+  <text x="439" y="443" text-anchor="middle" class="h">Flight Service</text>
+  <text x="439" y="461" text-anchor="middle" class="s">REST · :3004</text>
+  <text x="439" y="481" text-anchor="middle" class="xs">CRUD + live search</text>
+  <text x="439" y="496" text-anchor="middle" class="xs">(timeout, retry,</text>
+  <text x="439" y="511" text-anchor="middle" class="xs">catalog fallback)</text>
+  <text x="439" y="545" text-anchor="middle" class="xs">PostgreSQL: flight_db</text>
+
+  <!-- Hotel -->
+  <rect x="526" y="420" width="150" height="140" rx="10" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.6"/>
+  <text x="601" y="443" text-anchor="middle" class="h">Hotel Service</text>
+  <text x="601" y="461" text-anchor="middle" class="s">REST · :3005</text>
+  <text x="601" y="481" text-anchor="middle" class="xs">CRUD, filters</text>
+  <text x="601" y="545" text-anchor="middle" class="xs">PostgreSQL: hotel_db</text>
+
+  <!-- Car rental -->
+  <rect x="688" y="420" width="150" height="140" rx="10" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.6"/>
+  <text x="763" y="443" text-anchor="middle" class="h">Car Rental Service</text>
+  <text x="763" y="461" text-anchor="middle" class="s">REST · :3006</text>
+  <text x="763" y="481" text-anchor="middle" class="xs">CRUD, filters</text>
+  <text x="763" y="545" text-anchor="middle" class="xs">PostgreSQL: car_rental_db</text>
+
+  <!-- Activity -->
+  <rect x="850" y="420" width="150" height="140" rx="10" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.6"/>
+  <text x="925" y="443" text-anchor="middle" class="h">Activity Service</text>
+  <text x="925" y="461" text-anchor="middle" class="s">REST · :3007</text>
+  <text x="925" y="481" text-anchor="middle" class="xs">CRUD, search</text>
+  <text x="925" y="545" text-anchor="middle" class="xs">PostgreSQL: activity_db</text>
+
+  <!-- LLM -->
+  <rect x="1012" y="420" width="150" height="140" rx="10" fill="#f0fdf4" stroke="#15803d" stroke-width="2"/>
+  <text x="1087" y="443" text-anchor="middle" class="h">LLM Service (AI)</text>
+  <text x="1087" y="461" text-anchor="middle" class="s">REST · :3008</text>
+  <text x="1087" y="481" text-anchor="middle" class="xs">1. Pre-trip notes</text>
+  <text x="1087" y="496" text-anchor="middle" class="xs">(fixed chain)</text>
+  <text x="1087" y="511" text-anchor="middle" class="xs">2. AI assistant</text>
+  <text x="1087" y="526" text-anchor="middle" class="xs">(tool-calling chain)</text>
+  <text x="1087" y="545" text-anchor="middle" class="xs">PostgreSQL: llm_db</text>
+
+  <!-- Redis -->
+  <rect x="1210" y="440" width="250" height="100" rx="10" fill="#fef2f2" stroke="#b91c1c" stroke-width="1.5"/>
+  <text x="1335" y="466" text-anchor="middle" class="h">Redis</text>
+  <text x="1335" y="486" text-anchor="middle" class="s">cache for GET responses</text>
+  <text x="1335" y="504" text-anchor="middle" class="xs">Flight, Hotel, Car Rental,</text>
+  <text x="1335" y="519" text-anchor="middle" class="xs">Activity, LLM (optional)</text>
+  <path d="M1162,490 L1208,490" stroke="#b91c1c" stroke-width="1.4" stroke-dasharray="5 4" fill="none"/>
+
+  <!-- Internal calls between services (under the row) -->
+  <path d="M320,560 C320,598 420,598 420,562" class="line"/>
+  <text x="370" y="592" class="lbl" text-anchor="middle">attach flight</text>
+  <path d="M1050,560 C1050,640 460,640 460,562" class="lineAi"/>
+  <text x="755" y="624" class="lblAi" text-anchor="middle">search_flights tool (max 2 per question)</text>
+  <path d="M1075,560 C1075,670 290,670 290,562" class="lineAi"/>
+  <text x="690" y="646" class="lblAi" text-anchor="middle">pre-trip notes: the trip, flights, days</text>
+  <path d="M1100,560 C1100,700 135,700 135,562" class="lineAi"/>
+  <text x="620" y="669" class="lblAi" text-anchor="middle">pre-trip notes: home country (GET /api/users/me)</text>
+
+  <!-- External APIs -->
+  <rect x="1210" y="88" width="250" height="70" rx="10" fill="#ffffff" stroke="#64748b" stroke-dasharray="6 4" stroke-width="1.5"/>
+  <text x="1335" y="114" text-anchor="middle" class="h">Google Maps JavaScript API</text>
+  <text x="1335" y="134" text-anchor="middle" class="xs">external · map picker in "Add place"</text>
+  <path d="M920,123 L1208,123" class="ext"/>
+  <text x="1064" y="116" class="lbl" text-anchor="middle">from the browser</text>
+
+  <rect x="40" y="760" width="200" height="74" rx="10" fill="#ffffff" stroke="#64748b" stroke-dasharray="6 4" stroke-width="1.5"/>
+  <text x="140" y="786" text-anchor="middle" class="h">Google Identity</text>
+  <text x="140" y="805" text-anchor="middle" class="xs">external · verifies the</text>
+  <text x="140" y="820" text-anchor="middle" class="xs">Sign in with Google token</text>
+  <path d="M90,560 L90,758" class="ext"/>
+
+  <rect x="255" y="760" width="200" height="74" rx="10" fill="#ffffff" stroke="#64748b" stroke-dasharray="6 4" stroke-width="1.5"/>
+  <text x="355" y="786" text-anchor="middle" class="h">Google Places API (New)</text>
+  <text x="355" y="805" text-anchor="middle" class="xs">external · nearby places,</text>
+  <text x="355" y="820" text-anchor="middle" class="xs">locate a destination</text>
+  <path d="M245,560 L245,730 L300,730 L300,758" class="ext"/>
+
+  <rect x="470" y="760" width="220" height="74" rx="10" fill="#ffffff" stroke="#64748b" stroke-dasharray="6 4" stroke-width="1.5"/>
+  <text x="580" y="786" text-anchor="middle" class="h">SerpApi (Google Flights)</text>
+  <text x="580" y="805" text-anchor="middle" class="xs">external · live one-way</text>
+  <text x="580" y="820" text-anchor="middle" class="xs">flight prices and times</text>
+  <path d="M500,560 L500,730 L560,730 L560,758" class="ext"/>
+
+  <rect x="980" y="760" width="214" height="74" rx="10" fill="#ffffff" stroke="#64748b" stroke-dasharray="6 4" stroke-width="1.5"/>
+  <text x="1087" y="786" text-anchor="middle" class="h">Groq API</text>
+  <text x="1087" y="805" text-anchor="middle" class="xs">external · LLM openai/gpt-oss-20b</text>
+  <text x="1087" y="820" text-anchor="middle" class="xs">no key → mock (stub) mode</text>
+  <path d="M1140,560 L1140,758" class="ext"/>
+
+  <!-- Legend -->
+  <g transform="translate(1210,600)">
+    <rect width="250" height="134" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+    <text x="12" y="22" class="h">Legend</text>
+    <rect x="12" y="34" width="16" height="12" fill="#eff6ff" stroke="#1d4ed8"/><text x="36" y="45" class="xs">REST microservice</text>
+    <rect x="12" y="54" width="16" height="12" fill="#fff7ed" stroke="#c2410c"/><text x="36" y="65" class="xs">monolith (REST + database)</text>
+    <rect x="12" y="74" width="16" height="12" fill="#f0fdf4" stroke="#15803d"/><text x="36" y="85" class="xs">AI service / AI calls</text>
+    <rect x="12" y="94" width="16" height="12" fill="#ffffff" stroke="#64748b" stroke-dasharray="3 2"/><text x="36" y="105" class="xs">external API (dashed arrow)</text>
+    <rect x="12" y="114" width="16" height="12" fill="#f5f3ff" stroke="#6d28d9"/><text x="36" y="125" class="xs">API gateway + GraphQL</text>
+  </g>
+</svg>
